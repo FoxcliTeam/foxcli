@@ -8,18 +8,32 @@ Why not integrate with OpenRouter? OpenRouter's API for Claude models is too exp
 
 ## Quick Start
 
-### Requirements
-
-- [Bun](https://bun.sh/) >= 1.3.11
-- Go to [LangRouter](https://langrouter.ai/) register an account, save your api-key, and ensure your account has sufficient balance (you can deposit $2 for testing)
+### LangRouter API Key Preparation
+ Go to [LangRouter](https://langrouter.ai/) register an account, save your api-key, and ensure your account has sufficient balance (you can deposit $2 for testing)
 
 ### Installation
+```bash
+npm i @foxclicom/foxcli -g
+```
+
+### Running
+```bash
+foxcli
+```
+
+## Compile from source code yourself (optional)
+
+#### Environmental requirements
+
+- [Bun](https://bun.sh/) >= 1.3.11
+
+#### Install dependencies
 
 ```bash
 bun install
 ```
 
-### Running
+#### Running
 
 ```bash
 # Development mode

@@ -1,6 +1,6 @@
 {
   "name": "@foxclicom/foxcli",
-  "version": "2.1.90",
+  "version": "2.1.92",
   "description": "Fox CLI - interactive AI coding assistant in the terminal",
   "type": "module",
   "author": "foxcli <team@foxcli.com>",

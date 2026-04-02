@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { feature } from 'bun:bundle'
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
