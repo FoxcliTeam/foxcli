@@ -1,0 +1,212 @@
+---
+title: "任务管理系统 - TodoWrite 与 Tasks 双轨架构"
+description: "揭秘 Claude Code 任务管理系统的双轨架构：V1 内存 TodoWrite 与 V2 文件系统 Tasks，包含依赖管理、认领竞争和验证推动机制。"
+keywords: ["任务管理", "TodoWrite", "任务队列", "依赖管理", "多任务"]
+---
+
+{/* 本章目标：揭示任务系统 V1（内存 TodoWrite）和 V2（文件系统 Task*）的双轨架构，以及依赖管理、认领竞争、验证推动的工程细节 */}
+
+## 双轨架构：TodoWrite V1 与 Tasks V2
+
+Claude Code 的任务管理并非单一系统，而是两个并存、按运行模式切换的实现：
+
+| 维度 | V1: TodoWrite | V2: TaskCreate / TaskUpdate / TaskList / TaskGet |
+|------|--------------|--------------------------------------------------|
+| **启用条件** | 非交互式（pipe/SDK）或 `isTodoV2Enabled()` 返回 `false` | 交互式 REPL（默认）或 `CLAUDE_CODE_ENABLE_TASKS=1` |
+| **存储** | 内存中 `AppState.todos[sessionId]`（Zustand store） | 文件系统 `~/.claude/tasks/<taskListId>/<id>.json` |
+| **数据模型** | `{content, status, activeForm}` — 扁平三元组 | `{id, subject, description, activeForm, owner, status, blocks[], blockedBy[], metadata}` — 完整实体 |
+| **持久化** | 进程退出即丢失 | 跨进程存活，支持多 Agent 并发访问 |
+| **并发安全** | 无（单会话单写者） | 文件锁 + 高水位标记 + TOCTOU 防护 |
+
+切换逻辑位于 `isTodoV2Enabled()`（`src/utils/tasks.ts:133`）：交互式会话默认启用 V2，SDK/pipe 模式回落 V1。两者互斥——`TodoWriteTool.isEnabled` 返回 `!isTodoV2Enabled()`，而 `TaskCreateTool.isEnabled` 返回 `isTodoV2Enabled()`。
+
+## V1：TodoWrite 的极简设计
+
+TodoWrite 本质是一个**全量替换**操作——每次调用传入完整的 `todos[]` 数组，完全覆盖之前的状态：
+
+```typescript
+// src/tools/TodoWriteTool/TodoWriteTool.ts — call() 核心逻辑
+async call({ todos }, context) {
+  const todoKey = context.agentId ?? getSessionId()
+  const oldTodos = appState.todos[todoKey] ?? []
+  const allDone = todos.every(_ => _.status === 'completed')
+  const newTodos = allDone ? [] : todos  // 全部完成则清空列表
+  // ... 写入 AppState
+}
+```
+
+### 智能清空与验证推动
+
+一个微妙的设计：当所有任务都 `completed` 时，`newTodos` 被设为空数组（而非保留 `completed` 列表）。这确保 UI 上不会有"已完成"的视觉噪音。
+
+此外，V1 包含一个**验证推动**（verification nudge）机制：当主线程 Agent 完成 3+ 个任务且没有任何一个是验证步骤时，系统在 tool_result 中追加提示，催促 Agent 派生验证子 Agent：
+
+```typescript
+// 条件：主线程 + 全部完成 + ≥3 项 + 无验证任务
+if (allDone && todos.length >= 3 && !todos.some(t => /verif/i.test(t.content))) {
+  verificationNudgeNeeded = true
+}
+// tool_result 中追加：
+// "NOTE: You just closed out 3+ tasks and none was a verification step..."
+```
+
+这是防止 Agent "自说自话地宣布完成"的防御性设计——通过结构性推动而非硬约束。
+
+## V2：文件系统持久化的任务系统
+
+### 数据模型
+
+每个任务是一个独立 JSON 文件，路径为 `~/.claude/tasks/<taskListId>/<id>.json`：
+
+```typescript
+// src/utils/tasks.ts — TaskSchema
+{
+  id: string,           // 自增整数（1, 2, 3...）
+  subject: string,      // 祈使句标题（如 "Fix auth bug"）
+  description: string,  // 详细描述
+  activeForm?: string,  // 进行时形式（如 "Fixing auth bug"），用于 spinner
+  owner?: string,       // 认领该任务的 Agent ID/名称
+  status: "pending" | "in_progress" | "completed",
+  blocks: string[],     // 此任务阻塞哪些任务 ID
+  blockedBy: string[],  // 哪些任务 ID 阻塞此任务
+  metadata?: Record<string, unknown>  // 任意附加数据
+}
+```
+
+### 任务列表 ID 的解析优先级
+
+`getTaskListId()` 按 5 级优先级解析任务归属：
+
+1. `CLAUDE_CODE_TASK_LIST_ID` 环境变量（显式覆盖）
+2. 进程内 teammate 上下文的 teamName（共享 leader 的任务列表）
+3. `CLAUDE_CODE_TEAM_NAME` 环境变量（进程级 teammate）
+4. Leader 通过 `setLeaderTeamName()` 设置的 teamName
+5. `getSessionId()`（独立会话的兜底）
+
+这意味着多 Agent 团队模式下，所有 teammate 自动共享同一个任务列表，无需额外协调。
+
+### ID 分配与高水位标记
+
+任务 ID 是简单的递增整数，但在并发场景下需要防止竞争：
+
+```typescript
+// src/utils/tasks.ts — createTask() 简化
+async function createTask(taskListId, taskData) {
+  release = await lockfile.lock(lockPath, LOCK_OPTIONS)  // 获取排他锁
+  const highestId = await findHighestTaskId(taskListId)   // 读取当前最大 ID
+  const id = String(highestId + 1)                        // 递增
+  await writeFile(path, JSON.stringify({ id, ...taskData }))
+  return id
+}
+```
+
+锁配置使用指数退避重试 30 次（总计约 2.6 秒），适配 10+ 并发 Agent 的 swarm 场景。
+
+高水位标记文件 `.highwatermark` 确保删除任务后 ID 不会被重用——即使任务 #5 被删除，下一个新建任务仍然是 #6。
+
+## 依赖管理：blocks / blockedBy
+
+任务间的依赖通过双向链表式的 `blocks` / `blockedBy` 字段实现：
+
+- `taskA.blocks = ["3"]` 表示 "任务 A 完成前，任务 3 不能开始"
+- `task3.blockedBy = ["A"]` 表示 "任务 3 必须等任务 A 完成"
+
+`blockTask()` 函数同时维护两端：
+
+```typescript
+// src/utils/tasks.ts — blockTask()
+// A blocks B → 更新 A.blocks 加入 B，同时更新 B.blockedBy 加入 A
+if (!fromTask.blocks.includes(toTaskId)) {
+  await updateTask(taskListId, fromTaskId, { blocks: [...fromTask.blocks, toTaskId] })
+}
+if (!toTask.blockedBy.includes(fromTaskId)) {
+  await updateTask(taskListId, toTaskId, { blockedBy: [...toTask.blockedBy, fromTaskId] })
+}
+```
+
+删除任务时，系统自动清理所有指向它的依赖引用（`deleteTask()` 遍历全部任务移除 `blocks` 和 `blockedBy` 中的引用）。
+
+## 任务认领与并发控制
+
+`claimTask()` 是 V2 的核心并发原语，支持两种锁定粒度：
+
+### 1. 任务级锁（默认）
+
+仅锁定目标任务文件，适合单 Agent 场景：
+
+```
+getTask → 检查 owner → 检查 status → 检查 blockedBy → 写入 owner
+```
+
+### 2. 列表级锁 + Agent 忙碌检查
+
+当 `checkAgentBusy: true` 时，锁定整个任务列表目录（`.lock` 文件），原子化地完成：
+
+```
+listTasks → 检查任务状态 → 检查依赖 → 检查 Agent 是否已拥有其他未完成任务 → 写入 owner
+```
+
+认领失败有 4 种原因：
+
+| `reason` | 含义 |
+|----------|------|
+| `task_not_found` | 任务 ID 不存在 |
+| `already_claimed` | 已被其他 Agent 认领 |
+| `already_resolved` | 任务已标记 completed |
+| `blocked` | blockedBy 列表中有未完成的任务 |
+| `agent_busy` | 该 Agent 已拥有其他未完成任务（仅 `checkAgentBusy` 模式） |
+
+## Agent 团队的任务生命周期
+
+在 swarms 模式下，任务系统的生命周期是这样的：
+
+```
+Leader 创建团队
+  ↓
+Leader 用 TaskCreate 创建任务（status=pending, owner=undefined）
+  ↓
+Leader 用 TaskUpdate 设置依赖关系（addBlocks/addBlockedBy）
+  ↓
+Teammate 调用 TaskList → 发现可认领的任务
+  ↓
+Teammate 调用 TaskUpdate(taskId, {status: "in_progress"})
+         → 自动设置 owner 为 teammate 名称
+         → Leader 通过 mailbox 收到 task_assignment 通知
+  ↓
+Teammate 完成工作 → TaskUpdate(taskId, {status: "completed"})
+         → tool_result 提示 "Call TaskList to find your next available task"
+         → 依赖此任务的其他任务自动解锁
+  ↓
+Teammate 异常退出 → unassignTeammateTasks()
+         → 未完成任务被重置为 pending + owner=undefined
+         → Leader 收到通知并重新分配
+```
+
+### Hooks 集成
+
+TaskCreate 和 TaskUpdate 都集成了 hooks 系统：
+
+- **创建时**：`executeTaskCreatedHooks` — 外部钩子可以阻断任务创建（blockingError 导致任务被立即删除）
+- **完成时**：`executeTaskCompletedHooks` — 外部钩子可以阻断任务标记为完成
+
+这允许外部系统（CI、审批流）参与任务状态机。
+
+## activeForm：终端 UX 的细节
+
+每个任务有两个文案字段：
+
+- `subject`：祈使句，用于任务列表展示（"Fix auth bug"）
+- `activeForm`：进行时形式，用于 spinner 动画（"Fixing auth bug..."）
+
+当 `activeForm` 缺省时，spinner 回退显示 `subject`。这个看似微小的设计确保了用户在等待时看到的是"正在做什么"而非"要做什么"。
+
+## Plan Mode 与任务系统的配合
+
+Plan Mode（计划模式）和任务系统是互补但独立的机制：
+
+1. Plan Mode 限制工具集为只读（搜索、阅读），迫使 AI 先理解再行动
+2. AI 在 Plan Mode 中用 TaskCreate 建立任务列表
+3. 用户审批后退出 Plan Mode
+4. AI 按 `blockedBy` 拓扑序逐项执行，每项用 TaskUpdate 标记进度
+
+`shouldDefer: true` 属性确保这些工具调用不会触发权限确认弹窗——任务管理操作始终自动批准，因为它们不产生副作用。

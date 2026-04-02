@@ -1,0 +1,168 @@
+---
+title: "命令执行工具 - BashTool 安全设计与实现"
+description: "从源码角度解析 Claude Code BashTool：只读命令判定、AST 安全解析、自动后台化、输出截断和专用工具 vs shell 命令的设计权衡。"
+keywords: ["Bash 工具", "命令执行", "Shell 执行", "安全命令", "AI 执行命令"]
+---
+
+{/* 本章目标：从源码角度揭示 BashTool 的安全设计、执行链路和关键工程决策 */}
+
+## 执行链路总览
+
+一条 Bash 命令从 AI 决策到实际执行的完整路径：
+
+```
+AI 生成 tool_use: { command: "npm test" }
+  ↓
+BashTool.validateInput()         ← 基础输入校验
+  ↓
+BashTool.checkPermissions()      ← 权限检查（详见安全体系章节）
+  ├── isReadOnly()? → 自动 allow（只读命令免审批）
+  ├── bashToolHasPermission()    ← AST 解析 + 语义检查 + 规则匹配
+  └── 未匹配 → 弹窗确认
+  ↓
+BashTool.call() → runShellCommand()
+  ↓
+shouldUseSandbox(input)          ← 是否需要沙箱包裹
+  ↓
+Shell.exec(command, { shouldUseSandbox, shouldAutoBackground })
+  ↓
+spawn(wrapped_command)           ← 实际进程创建
+```
+
+## 只读命令的判定：为什么 Read 免审批而 Bash 不一定
+
+BashTool 的 `isReadOnly()` 方法（`BashTool.tsx:437`）决定一条命令是否被视为"只读"：
+
+```typescript
+isReadOnly(input) {
+  const compoundCommandHasCd = commandHasAnyCd(input.command)
+  const result = checkReadOnlyConstraints(input, compoundCommandHasCd)
+  return result.behavior === 'allow'
+}
+```
+
+判定逻辑基于 4 个命令集合（`BashTool.tsx:60-78`）：
+
+| 集合 | 命令 | 性质 |
+|------|------|------|
+| `BASH_SEARCH_COMMANDS` | find, grep, rg, ag, ack, locate, which, whereis | 搜索类 |
+| `BASH_READ_COMMANDS` | cat, head, tail, wc, stat, file, jq, awk, sort, uniq... | 读取/分析类 |
+| `BASH_LIST_COMMANDS` | ls, tree, du | 列表类 |
+| `BASH_SEMANTIC_NEUTRAL_COMMANDS` | echo, printf, true, false, : | 语义中性（不影响判定） |
+
+对于复合命令（`ls dir && echo "---" && ls dir2`），系统拆分后逐段检查——**所有非中性段都必须属于上述集合**，整条命令才被视为只读。
+
+```typescript
+// BashTool.tsx:95 — 简化的判定逻辑
+for (const part of partsWithOperators) {
+  if (BASH_SEMANTIC_NEUTRAL_COMMANDS.has(baseCommand)) continue  // 跳过中性段
+  if (!isPartSearch && !isPartRead && !isPartList) {
+    return { isSearch: false, isRead: false, isList: false }  // 有任何一段不通过 → 非只读
+  }
+}
+```
+
+## AST 安全解析：tree-sitter bash 解析
+
+`preparePermissionMatcher()`（`BashTool.tsx:445`）在权限检查前用 `parseForSecurity()` 解析命令结构：
+
+```typescript
+async preparePermissionMatcher({ command }) {
+  const parsed = await parseForSecurity(command)
+  if (parsed.kind !== 'simple') {
+    return () => true  // 解析失败 → fail-safe，触发所有 hook
+  }
+  // 提取子命令列表，剥离 VAR=val 前缀
+  const subcommands = parsed.commands.map(c => c.argv.join(' '))
+  return pattern => {
+    return subcommands.some(cmd => matchWildcardPattern(pattern, cmd))
+  }
+}
+```
+
+关键安全点：对于复合命令 `ls && git push`，解析后拆分为 `["ls", "git push"]`，确保 `git push` 不会因为前半段是只读命令而绕过权限检查。解析失败时采用 fail-safe 策略——假设不安全，触发所有安全 hook。
+
+## 超时控制：分级策略
+
+```
+用户指定 timeout → 直接使用
+  ↓ 未指定
+getDefaultTimeoutMs()
+  ├── 默认上限：120,000ms（2 分钟）
+  └── 最大上限：600,000ms（10 分钟，用户显式设置时）
+```
+
+超时后系统不会直接杀进程——`ShellCommand`（`src/utils/ShellCommand.ts:129`）通过 `onTimeout` 回调通知调用方，由调用方决定是终止还是后台化。
+
+## 自动后台化
+
+长时间运行的命令可以自动转为后台任务，不阻塞 AI 的 agentic loop：
+
+```typescript
+// BashTool.tsx:880
+const shouldAutoBackground = !isBackgroundTasksDisabled 
+  && isAutobackgroundingAllowed(command)
+```
+
+自动后台化的完整链路：
+
+```
+命令开始执行
+  ↓ 进度轮询
+15 秒内未完成（ASSISTANT_BLOCKING_BUDGET_MS）
+  ↓
+检查 isAutobackgroundingAllowed(command)
+  ↓ 允许
+将前台任务转为后台任务（backgroundExistingForegroundTask）
+  ↓
+shellCommand.onTimeout → spawnBackgroundTask()
+  ↓
+返回 taskId 给 AI，AI 可以继续做其他事
+  ↓
+后台任务完成后通过通知机制汇报结果
+```
+
+主线程 Agent 有 15 秒的阻塞预算——超过这个时间，系统自动将命令后台化。这防止了一个 `npm install` 阻塞整个 agentic loop 数分钟。
+
+## 输出截断策略
+
+命令输出过长时会触发截断，防止把海量日志塞进 AI 的上下文窗口：
+
+| 截断点 | 位置 | 行为 |
+|--------|------|------|
+| `maxResultSizeChars` | 工具级（通常 100K 字符） | 超长输出在写入消息前截断 |
+| 进度轮询截断 | `onProgress` 回调 | 只传递最后几行作为进度显示 |
+| `totalBytes` 标记 | `isIncomplete` 参数 | 告知 AI 输出被截断 |
+
+截断不是简单砍尾——`isIncomplete` 标记确保 AI 知道输出不完整，可以决定是否需要用更精确的命令重新获取。
+
+## 为什么用专用工具而不是直接调 shell
+
+Claude Code 为文件读写、代码搜索等操作提供了专用工具（Read、Grep、Glob），而不是让 AI 用 `cat`、`grep` 等 shell 命令。这不仅是用户体验的选择，更是架构层面的设计决策：
+
+| 维度 | 专用工具 | Bash 命令 |
+|------|---------|----------|
+| **权限粒度** | `Read` 是只读操作 → 自动放行 | `Bash: cat file` 需要审批整条命令（cat 在只读集合中但走不同路径） |
+| **输出结构化** | 返回结构化数据，UI 可渲染 diff、高亮 | 纯文本输出，无渲染优化 |
+| **性能优化** | 文件缓存、分页、token 预算控制 | 每次都是新进程，无缓存 |
+| **并发安全** | `isConcurrencySafe()` 返回 `true` → 可并行执行 | Bash 命令可能有副作用，串行执行 |
+| **安全审计** | 工具名精确匹配权限规则 | 需 AST 解析命令结构后匹配 |
+
+`isConcurrencySafe()`（`BashTool.tsx:434`）是一个常被忽视但重要的设计——只有只读命令可以在 agentic loop 中并行执行，有副作用的命令必须串行，防止竞态条件。
+
+## 进度反馈的流式设计
+
+BashTool 的命令执行是流式的，通过 `onProgress` 回调逐行推送输出：
+
+```
+runShellCommand()
+  ├── Shell.exec() 启动子进程
+  ├── 每秒轮询输出文件
+  ├── onProgress(lastLines, allLines, totalLines, totalBytes, isIncomplete)
+  │   ├── 更新 lastProgressOutput / fullOutput
+  │   └── resolveProgress() → 唤醒 generator yield
+  ├── yield { type: 'progress', output, fullOutput, elapsedTimeSeconds }
+  └── return { code, stdout, interrupted, ... }
+```
+
+UI 层通过 `useToolCallProgress` hook 实时展示命令输出。`resolveProgress()` 信号机制让 generator 在有新数据时才 yield，避免了忙等待。

@@ -1,0 +1,196 @@
+---
+title: "协调者与蜂群模式 - 多 Agent 高级编排"
+description: "从源码角度解析 Claude Code 多 Agent 协作：Coordinator Mode 的 System Prompt 设计、Worker 生命周期、Task 通信协议和 Swarm 蜂群的任务分配机制。"
+keywords: ["协调者模式", "蜂群模式", "Agent Swarm", "多 Agent 协作", "任务编排"]
+---
+
+{/* 本章目标：从源码角度揭示 Coordinator Mode 和 Agent Swarms 的架构设计 */}
+
+## 两种协作模式的架构差异
+
+| 维度 | Coordinator Mode | Agent Swarms |
+|------|-----------------|--------------|
+| **门控** | `feature('COORDINATOR_MODE')` + `CLAUDE_CODE_COORDINATOR_MODE=1` | 任务系统 V2（默认启用） |
+| **拓扑** | 星型：Coordinator 居中，Worker 外围 | 网状：对等 Agent 共享任务列表 |
+| **角色** | 明确分工：Coordinator 编排、Worker 执行 | 模糊：每个 Agent 自主认领任务 |
+| **通信** | `SendMessage` 定向通信 + `<task-notification>` | 任务文件系统 + 邮箱广播 |
+| **适用** | 需要集中决策的复杂任务 | 并行度高的独立子任务 |
+
+两者不是互斥的——Coordinator Mode 可以在 Swarm 架构之上运行，将 Coordinator 作为特殊的 Leader Agent。
+
+## Coordinator Mode：星型编排架构
+
+### 激活机制
+
+```typescript
+// src/coordinator/coordinatorMode.ts:36
+export function isCoordinatorMode(): boolean {
+  if (feature('COORDINATOR_MODE')) {
+    return isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)
+  }
+  return false  // 外部构建始终 false
+}
+```
+
+Coordinator Mode 需要双重门控：构建时 `feature('COORDINATOR_MODE')` 和运行时环境变量。`matchSessionMode()` 在会话恢复时自动同步模式状态——如果恢复的会话是 coordinator 模式，它会翻转环境变量以确保一致性。
+
+### Coordinator 的工具集
+
+Coordinator 被剥夺了所有"动手"工具，只保留编排能力：
+
+| 工具 | 用途 |
+|------|------|
+| **Agent** | 启动新 Worker（`subagent_type: "worker"`） |
+| **SendMessage** | 向已有 Worker 发送后续指令 |
+| **TaskStop** | 中途停止走错方向的 Worker |
+| **subscribe_pr_activity** | 订阅 GitHub PR 事件（review comments、CI 结果） |
+
+Coordinator **不写代码、不读文件、不执行命令**——它只做三件事：理解需求、分配任务、综合结果。
+
+### Worker 的工具权限
+
+Worker 的可用工具由 `getCoordinatorUserContext()`（`coordinatorMode.ts:80`）动态注入到 System Prompt：
+
+```typescript
+// 简化模式下：只有 Bash + Read + Edit
+const workerTools = isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE')
+  ? [BASH_TOOL_NAME, FILE_READ_TOOL_NAME, FILE_EDIT_TOOL_NAME]
+  : Array.from(ASYNC_AGENT_ALLOWED_TOOLS)
+      .filter(name => !INTERNAL_WORKER_TOOLS.has(name))
+```
+
+`INTERNAL_WORKER_TOOLS`（TeamCreate、TeamDelete、SendMessage、SyntheticOutput）被显式排除——Worker 不能嵌套创建团队或发送消息，防止不可控的递归。
+
+### Scratchpad：跨 Worker 的共享知识库
+
+当 `tengu_scratch` feature flag 启用时，Coordinator 拥有一个 Scratchpad 目录：
+
+```
+Scratchpad 目录：
+  - Workers 可自由读写，无需权限审批
+  - 用于持久化的跨 Worker 知识
+  - 结构由 Coordinator 决定（无固定格式）
+```
+
+这是一个关键的协作原语——Worker A 的研究结果可以写入 Scratchpad，Worker B 直接读取，无需通过 Coordinator 中转。
+
+### `<task-notification>` 通信协议
+
+Worker 完成后，Coordinator 收到 XML 格式的通知：
+
+```xml
+<task-notification>
+  <task-id>agent-a1b</task-id>          ← Worker 的 agentId
+  <status>completed|failed|killed</status>
+  <summary>Agent "Investigate auth bug" completed</summary>
+  <result>Found null pointer in src/auth/validate.ts:42...</result>
+  <usage>
+    <total_tokens>N</total_tokens>
+    <tool_uses>N</tool_uses>
+    <duration_ms>N</duration_ms>
+  </usage>
+</task-notification>
+```
+
+通知以 `user-role message` 形式送达，Coordinator 通过 `<task-notification>` 标签区分它和用户消息。`<task-id>` 用于 `SendMessage` 的 `to` 参数，实现定向续传。
+
+### Coordinator 的核心职责：综合（Synthesis）
+
+Coordinator System Prompt（`coordinatorMode.ts:111-369`，约 260 行）明确要求 Coordinator **不能懒惰地委派理解**：
+
+```
+反模式（禁止）：
+  "Based on your findings, fix the auth bug"
+  → 把理解的责任推给了 Worker
+
+正确做法：
+  "Fix the null pointer in src/auth/validate.ts:42.
+   The user field on Session (src/auth/types.ts:15) is
+   undefined when sessions expire but the token remains cached.
+   Add a null check before user.id access."
+  → Coordinator 自己理解了问题，给出精确指令
+```
+
+这是 Coordinator Mode 最核心的设计约束：Coordinator 必须先理解，再分配。
+
+## Agent Swarms：蜂群式协作
+
+Swarm 模式基于任务系统 V2（详见[任务管理](../tools/task-management.mdx)），核心机制是**共享任务列表 + 竞争认领**：
+
+### 团队初始化
+
+```
+Leader 创建团队（TeamCreateTool）
+  ↓
+设置 teamName → setLeaderTeamName()
+  ↓
+所有 teammate 自动获得相同的 taskListId
+  ↓
+teammate 启动时：
+  1. CLAUDE_CODE_TASK_LIST_ID 环境变量（显式覆盖）
+  2. teammate 上下文的 teamName（共享 leader 的任务列表）
+  3. CLAUDE_CODE_TEAM_NAME 环境变量
+  4. leader 设置的 teamName
+  5. getSessionId()（兜底）
+```
+
+多级优先级确保了 Leader 和所有 Teammate 指向同一个任务列表，无需额外协调。
+
+### 任务认领与竞争
+
+`claimTask()` 是 Swarm 的核心并发原语：
+
+```
+Teammate A 调用 TaskList → 发现 task #3 是 pending
+Teammate B 同时发现 task #3 是 pending
+  ↓
+两者同时尝试 TaskUpdate(task #3, {status: "in_progress"})
+  ↓
+文件锁 + 高水位标记保证原子性：
+  - 第一个写入者获得 owner 锁定
+  - 第二个写入者收到 already_claimed 错误
+  ↓
+获得任务的 teammate 执行工作
+  ↓
+完成后 TaskUpdate(task #3, {status: "completed"})
+  → 依赖此任务的其他任务自动解锁
+  → tool_result 提示 "Call TaskList to find your next task"
+```
+
+### Teammate 的生命周期管理
+
+```
+Teammate 异常退出
+  ↓
+unassignTeammateTasks()
+  → 扫描任务列表，找到 owner === teammateName 的未完成任务
+  → 重置为 pending + owner=undefined
+  ↓
+Leader 通过 mailbox 收到通知
+  → 重新分配或创建新 Teammate
+```
+
+## 任务类型全景
+
+支撑多 Agent 协作的是 7 种任务类型（`src/tasks/types.ts`）：
+
+| 任务类型 | 运行位置 | 状态管理 | 适用场景 |
+|----------|---------|---------|---------|
+| **LocalAgentTask** | 本地子进程 | `LocalAgentTaskState` | 标准子 Agent 任务 |
+| **LocalShellTask** | 本地 shell | `LocalShellTaskState` | 后台 shell 命令 |
+| **InProcessTeammateTask** | 同进程内 | `InProcessTeammateTaskState` | 轻量级进程内队友 |
+| **RemoteAgentTask** | 远程服务器 | `RemoteAgentTaskState` | 分布式 Agent（CCR） |
+| **DreamTask** | 后台静默 | `DreamTaskState` | 后台自主整理记忆 |
+| **LocalWorkflowTask** | 本地 | `LocalWorkflowTaskState` | 工作流编排 |
+| **MonitorMcpTask** | 本地 | `MonitorMcpTaskState` | MCP 监控任务 |
+
+`InProcessTeammateTask` 与 `LocalAgentTask` 的关键差异：前者共享进程的内存空间和基础设施状态（如 MCP 连接池），但有独立的对话上下文和工具权限；后者是完全隔离的子进程，启动开销更大但更安全。
+
+## Coordinator vs Swarm 的选择
+
+| 场景 | 推荐模式 | 原因 |
+|------|---------|------|
+| "重构认证系统，需要多模块协调" | Coordinator | 需要集中决策，Worker 间有依赖 |
+| "修复 10 个独立的 lint 警告" | Swarm | 任务独立，可完全并行 |
+| "研究方案 A 和方案 B，然后选一个实现" | Coordinator | 先并行研究，再集中决策 |
+| "在大仓库中搜索所有 TODO 并分类" | Swarm | 无依赖，各自领任务即可 |

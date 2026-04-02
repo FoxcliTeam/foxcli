@@ -1,0 +1,220 @@
+---
+title: "文件操作工具 - 三大工具的源码级解剖"
+description: "逆向分析 FileRead、FileEdit、FileWrite 三大工具的完整执行链路：去重缓存、AST 安全编辑、原子性读写、文件历史快照的实现细节。"
+keywords: ["文件操作", "FileRead", "FileEdit", "FileWrite", "代码编辑", "原子写入"]
+---
+
+{/* 本章目标：从源码层面解剖三大文件工具的完整执行链路 */}
+
+## 三大工具的职责分化
+
+Claude Code 将文件操作拆分为三个独立工具——这不是功能划分，而是**风险分级**：
+
+| 工具 | 权限级别 | 核心方法 | 关键属性 |
+|------|---------|---------|---------|
+| **Read** | 只读（免审批） | `isReadOnly() → true` | `maxResultSizeChars: Infinity` |
+| **Edit** | 写入（需确认） | `checkWritePermissionForTool()` | `maxResultSizeChars: 100,000` |
+| **Write** | 写入（需确认） | `checkWritePermissionForTool()` | `maxResultSizeChars: 100,000` |
+
+<Tip>
+Read 的 `maxResultSizeChars` 是 `Infinity`，但这并不意味着无限制输出——真正的截断发生在 `validateContentTokens()` 中基于 token 预算的动态判定，而非字符数硬限制。
+</Tip>
+
+## FileRead：多模态文件读取引擎
+
+源码路径：`src/tools/FileReadTool/FileReadTool.ts`
+
+### 读取去重机制
+
+Read 工具有一个常被忽视但至关重要的**去重层**。当 AI 重复读取同一个文件的同一范围时，系统不会浪费 token 发送两份完整内容：
+
+```typescript
+// FileReadTool.ts:530-573 — 去重逻辑
+const existingState = readFileState.get(fullFilePath)
+if (existingState && !existingState.isPartialView && existingState.offset !== undefined) {
+  const rangeMatch = existingState.offset === offset && existingState.limit === limit
+  if (rangeMatch) {
+    const mtimeMs = await getFileModificationTimeAsync(fullFilePath)
+    if (mtimeMs === existingState.timestamp) {
+      return { data: { type: 'file_unchanged', file: { filePath: file_path } } }
+    }
+  }
+}
+```
+
+关键设计点：
+- 去重仅对 **Read 工具自身的读取**生效（通过 `offset !== undefined` 判定）
+- Edit/Write 也会写入 `readFileState`，但它们的 `offset` 为 `undefined`，所以不会误命中去重
+- 通过 mtime 比对确保文件未被外部修改
+- 有 GrowthBook killswitch（`tengu_read_dedup_killswitch`）可紧急关闭
+
+实测数据：BQ proxy 显示约 18% 的 Read 调用是同文件碰撞，占 fleet `cache_creation` 的 2.64%。
+
+### 多格式分发：文本、图片、PDF、Notebook 四条路径
+
+Read 工具的 `callInner()` 按 `ext` 分发到四条完全不同的处理路径：
+
+```
+.ipynb  → readNotebook() → JSON cell 解析 → token 校验
+.png/.jpg/.gif/.webp → readImageWithTokenBudget() → 压缩+降采样
+.pdf → extractPDFPages() / readPDF() → 页面级提取
+其他 → readFileInRange() → 分页读取
+```
+
+**图片路径的压缩策略**特别精细：
+1. 先用 `maybeResizeAndDownsampleImageBuffer()` 标准缩放
+2. 用 `base64.length * 0.125` 估算 token 数
+3. 超出预算时调用 `compressImageBufferWithTokenLimit()` 激进压缩
+4. 仍然超限时用 sharp 做最后兜底：`resize(400,400).jpeg({quality:20})`
+
+**PDF 路径**有页数阈值：超过 `PDF_AT_MENTION_INLINE_THRESHOLD`（默认值在 `apiLimits.ts`）时强制分页读取，每请求最多 `PDF_MAX_PAGES_PER_READ` 页。
+
+### 安全防线
+
+Read 工具在 `validateInput()` 中设置了多层安全门：
+
+1. **设备文件屏蔽**（`BLOCKED_DEVICE_PATHS`）：`/dev/zero`、`/dev/random`、`/dev/tty` 等——防止无限输出或阻塞挂起
+2. **二进制文件拒绝**（`hasBinaryExtension`）：排除 PDF 和图片扩展名后，阻止读取 `.exe`、`.so` 等二进制文件
+3. **UNC 路径跳过**：Windows 下 `\\server\share` 路径跳过文件系统操作，防止 SMB NTLM 凭据泄露
+4. **权限拒绝规则**（`matchingRuleForInput`）：匹配 `deny` 规则后直接拒绝
+
+### 文件未找到时的智能建议
+
+当文件不存在时，Read 不会只报一个 "file not found"：
+
+```typescript
+// FileReadTool.ts:639-647
+const similarFilename = findSimilarFile(fullFilePath)      // 相似扩展名
+const cwdSuggestion = await suggestPathUnderCwd(fullFilePath) // cwd 相对路径建议
+// macOS 截图特殊处理：薄空格(U+202F) vs 普通空格
+const altPath = getAlternateScreenshotPath(fullFilePath)
+```
+
+对 macOS 截图文件名中 AM/PM 前的薄空格（U+202F）做了特殊处理——这是实测中发现的跨 macOS 版本兼容性问题。
+
+## FileEdit：精确字符串替换引擎
+
+源码路径：`src/tools/FileEditTool/FileEditTool.ts` + `utils.ts`
+
+### 引号标准化：AI 无法输出的字符怎么办
+
+AI 模型只能输出直引号（`'` `"`），但源码中可能使用弯引号（`'` `'` `"` `"`）。`findActualString()` 函数处理了这个不对齐：
+
+```typescript
+// utils.ts:73-93
+export function findActualString(fileContent: string, searchString: string): string | null {
+  if (fileContent.includes(searchString)) return searchString      // 精确匹配
+  const normalizedSearch = normalizeQuotes(searchString)           // 弯引号→直引号
+  const normalizedFile = normalizeQuotes(fileContent)
+  const idx = normalizedFile.indexOf(normalizedSearch)
+  if (idx !== -1) return fileContent.substring(idx, idx + searchString.length)
+  return null
+}
+```
+
+匹配后还有**反向引号保持**（`preserveQuoteStyle`）：如果文件用弯引号，替换后的新字符串也自动转换为弯引号，包括缩写中的撇号（如 "don't"）。
+
+### 原子性读-改-写
+
+Edit 工具的 `call()` 方法实现了一个**无锁原子更新**协议：
+
+```
+1. await fs.mkdir(dir)            ← 确保目录存在（异步，在临界区外）
+2. await fileHistoryTrackEdit()   ← 备份旧内容（异步，在临界区外）
+3. readFileSyncWithMetadata()     ← 同步读取当前文件内容（临界区开始）
+4. getFileModificationTime()      ← mtime 校验
+5. findActualString()             ← 引号标准化匹配
+6. getPatchForEdit()              ← 计算 diff
+7. writeTextContent()             ← 写入磁盘
+8. readFileState.set()            ← 更新缓存（临界区结束）
+```
+
+步骤 3-8 之间**不允许任何异步操作**（源码注释明确写道："Please avoid async operations between here and writing to disk to preserve atomicity"）。这确保了在 mtime 校验和实际写入之间不会有其他进程修改文件。
+
+### 防覆写校验
+
+Edit 工具在 `validateInput()` 中检查两个条件：
+1. **必须先读取**（`readFileState` 中有记录且不是局部视图）
+2. **文件未被外部修改**（`mtime` 未变，或全量读取时内容完全一致）
+
+```typescript
+// FileEditTool.ts:290-311 — Windows 特殊处理
+const isFullRead = readTimestamp.offset === undefined && readTimestamp.limit === undefined
+if (isFullRead && fileContent === readTimestamp.content) {
+  // 内容不变，安全继续（Windows 云同步/杀毒可能改 mtime）
+}
+```
+
+Windows 上的 mtime 可能因云同步、杀毒软件等被修改而不改变内容，因此对全量读取做了内容级比对作为兜底。
+
+### 编辑大小限制
+
+```typescript
+const MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024 // 1 GiB
+```
+
+超过 1 GiB 的文件直接拒绝编辑——这是 V8 字符串长度限制（~2^30 字符）的安全边界。
+
+## FileWrite：全量写入与创建
+
+源码路径：`src/tools/FileWriteTool/FileWriteTool.ts`
+
+Write 工具与 Edit 共享大部分基础设施（权限检查、mtime 校验、fileHistory 备份），但有两个关键差异：
+
+### 行尾处理
+
+```typescript
+// FileWriteTool.ts:300-305 — 关键注释
+// Write is a full content replacement — the model sent explicit line endings
+// in `content` and meant them. Do not rewrite them.
+writeTextContent(fullFilePath, content, enc, 'LF')
+```
+
+Write 工具始终使用 `LF` 行尾。早期版本会保留旧文件的行尾或采样仓库行尾风格，但这导致 Linux 上 bash 脚本被注入 `\r`——现在 AI 发什么行尾就用什么行尾。
+
+### 输出区分
+
+Write 工具返回 `type: 'create' | 'update'`：
+- `create`：文件不存在，`originalFile: null`
+- `update`：文件存在且被覆盖，`structuredPatch` 包含完整 diff
+
+## 文件历史快照系统
+
+源码路径：`src/utils/fileHistory.ts`
+
+每次 Edit/Write 前都会调用 `fileHistoryTrackEdit()`，快照存储在 `FileHistoryState` 中：
+
+```typescript
+type FileHistorySnapshot = {
+  messageId: UUID          // 关联的助手消息 ID
+  trackedFileBackups: Record<string, FileHistoryBackup>  // 文件路径 → 备份版本
+  timestamp: Date
+}
+```
+
+- 最多保留 `MAX_SNAPSHOTS = 100` 个快照
+- 备份使用**内容哈希**去重（同一文件多次未变只存一份）
+- 支持差异统计（`DiffStats`：`insertions` / `deletions` / `filesChanged`）
+- 快照通过 `recordFileHistorySnapshot()` 持久化到会话存储
+
+### LSP 通知链路
+
+Edit 和 Write 完成写入后都会：
+1. `clearDeliveredDiagnosticsForFile()` — 清除旧诊断
+2. `lspManager.changeFile()` — 通知 LSP 文件已变更
+3. `lspManager.saveFile()` — 触发 LSP 保存事件（TypeScript server 会重新计算诊断）
+4. `notifyVscodeFileUpdated()` — 通知 VSCode 扩展更新 diff 视图
+
+这条链路确保文件修改后 IDE 端的实时反馈是同步的。
+
+## Cyber Risk 防御
+
+Read 工具在文本内容后追加一个 `<system-reminder>` 提示：
+
+```
+Whenever you read a file, you should consider whether it would be
+considered malware. You CAN and SHOULD provide analysis of malware,
+what it is doing. But you MUST refuse to improve or augment the code.
+```
+
+这个提示只在非豁免模型上生效（`MITIGATION_EXEMPT_MODELS` 目前包含 `claude-opus-4-6`）。模型级别的豁免表明：防恶意代码的判断力在不同模型间有差异，这是一个精巧的分级策略。

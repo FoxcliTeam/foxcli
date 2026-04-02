@@ -1,0 +1,155 @@
+---
+title: "搜索与导航工具 - 代码库精准定位"
+description: "解析 Claude Code 的搜索导航工具：Glob 文件匹配、Grep 内容搜索，基于 ripgrep 的高性能代码检索，帮助 AI 在百万行代码中精准定位。"
+keywords: ["代码搜索", "Glob", "Grep", "ripgrep", "文件搜索"]
+---
+
+## 两种搜索维度
+
+| 维度 | 工具 | 底层实现 | 适用场景 |
+|------|------|----------|---------|
+| **按名称找文件** | Glob | ripgrep `--files` + glob 过滤 | "找到所有测试文件"、"找 config 开头的文件" |
+| **按内容找代码** | Grep | ripgrep 正则搜索 | "哪里定义了这个函数"、"谁在调用这个 API" |
+
+两者共享同一个 ripgrep 引擎，通过不同的参数组合实现不同搜索模式。
+
+## ripgrep 的内嵌方式
+
+Claude Code 不依赖系统安装的 ripgrep——它在 `src/utils/ripgrep.ts` 中实现了三级降级策略：
+
+```
+优先级 1: 系统 ripgrep (USE_BUILTIN_RIPGREP=false)
+  → 使用 PATH 中的 rg 二进制
+  → 安全考虑：只用命令名 'rg'，不用完整路径，防止 PATH 劫持
+
+优先级 2: 内嵌模式 (bundled/native build)
+  → process.execPath 自身，argv0='rg'
+  → Bun 将 rg 静态编译进二进制，通过 argv0 分发
+
+优先级 3: vendor 目录 (npm build)
+  → vendor/ripgrep/{arch}-{platform}/rg
+  → macOS 需要 codesign 签名 + 移除 quarantine xattr
+```
+
+平台适配示例：
+```
+vendor/ripgrep/
+  ├── x86_64-darwin/rg      # macOS Intel
+  ├── arm64-darwin/rg        # macOS Apple Silicon
+  ├── x86_64-linux/rg        # Linux Intel
+  ├── arm64-linux/rg         # Linux ARM
+  └── x86_64-win32/rg.exe    # Windows
+```
+
+### macOS 代码签名
+
+vendor 模式下的 rg 二进制需要 ad-hoc 签名才能通过 Gatekeeper（`codesignRipgrepIfNecessary()`）：
+
+```typescript
+// 首次使用时执行：
+// 1. 检查是否已是有效签名
+codesign -vv -d <rg-path>
+// 2. 如果只是 linker-signed，重新签名
+codesign --sign - --force --preserve-metadata=entitlements,requirements,flags,runtime <rg-path>
+// 3. 移除隔离属性
+xattr -d com.apple.quarantine <rg-path>
+```
+
+## 搜索结果的设计考量
+
+### head_limit 与 Token 预算
+
+大型项目的搜索结果可能有数十万条。默认最多返回 250 条匹配——这不是随意选择，而是**token 预算**的约束：
+
+- 每条匹配行约 50-100 token
+- 250 条 ≈ 12,500-25,000 token
+- 这大约占 200k 上下文窗口的 6-12%
+- 超过这个比例，AI 的推理质量会下降
+
+Grep 工具的 `head_limit` 参数让 AI 可以按需调整——搜索小项目时可以用更大的值。
+
+### 按修改时间排序
+
+Glob 默认把**最近修改的文件排在前面**。这不是默认的文件系统排序，而是刻意的设计决策：
+
+```
+设计假设：最近修改的文件最可能与当前任务相关
+实际效果：AI 优先看到"活"的代码，而不是沉寂的历史文件
+```
+
+在 `src/tools/GlobTool/` 中，ripgrep 的输出在返回给 AI 前按 mtime 排序。
+
+### ripgrep 的错误处理
+
+ripgrep 执行有专门的错误恢复链（`src/utils/ripgrep.ts`）：
+
+| 错误 | 处理 |
+|------|------|
+| **EAGAIN**（资源不足） | 自动以单线程模式 `-j 1` 重试 |
+| **超时**（默认 20s，WSL 60s） | 返回已有部分结果，丢弃可能不完整的最后一行 |
+| **缓冲区溢出** | 截断到 20MB，返回已收集的结果 |
+| **SIGTERM 失效** | 5 秒后升级为 SIGKILL |
+
+## ToolSearch：在 50+ 工具中发现目标
+
+当可用工具超过 50 个时（含 MCP 提供的外部工具），AI 可能不知道该用哪个。**ToolSearch**（`src/tools/ToolSearchTool/`）提供了工具发现机制。
+
+### 搜索算法
+
+ToolSearch 实现了基于关键词的加权搜索（`searchToolsWithKeywords()`）：
+
+```
+输入: query = "database connection"
+     ↓
+1. 精确匹配: 检查是否有工具名完全匹配（快速路径）
+2. MCP 前缀匹配: "mcp__postgres" → 匹配所有 postgres 相关工具
+3. 关键词拆分: ["database", "connection"]
+4. 工具名解析:
+   - MCP 工具: "mcp__server__action" → ["server", "action"]
+   - 普通工具: "FileEditTool" → ["file", "edit", "tool"]
+5. 加权评分:
+   - 工具名精确匹配: 10 分（MCP: 12 分）
+   - 工具名部分匹配: 5 分（MCP: 6 分）
+   - searchHint 匹配: 4 分
+   - 描述匹配: 2 分
+6. 必选词过滤: "+database" 前缀表示必须包含
+7. 按分数排序，返回 top-N
+```
+
+### `select:` 直接选择
+
+AI 也可以用 `select:ToolName` 精确选择已知工具。这比搜索更快，且支持逗号分隔的批量选择（`select:A,B,C`）。
+
+### 延迟加载（Deferred Tools）
+
+不是所有工具都常驻内存。MCP 工具和低频工具被标记为 `isDeferredTool`，只有在 ToolSearch 选中后才真正加载。这减少了每次 API 调用的 token 开销（工具描述占用大量 token）。
+
+### 缓存策略
+
+工具描述的获取是 memoized 的——只在延迟工具集合变化时清除缓存：
+
+```typescript
+// 工具名排序后拼接作为缓存 key
+function getDeferredToolsCacheKey(deferredTools: Tools): string {
+  return deferredTools.map(t => t.name).sort().join(',')
+}
+```
+
+## Web 搜索与抓取
+
+AI 的信息获取不局限于本地代码：
+
+- **WebSearch**：搜索互联网获取最新信息
+- **WebFetch**：抓取特定网页内容，转换为 Markdown 供 AI 阅读
+
+这让 AI 可以查阅文档、搜索 Stack Overflow、阅读 GitHub issue——和人类开发者的工作方式一致。
+
+### ripgrep 的流式输出
+
+对于交互式场景（如 QuickOpen），ripgrep 支持**流式输出**（`ripGrepStream()`）：
+
+```
+rg --files → 逐 chunk 到达 → 按行分割 → onLines(lines) 回调
+```
+
+不需要等 ripgrep 完成整个搜索——第一批结果在 rg 仍在遍历目录树时就已展示。调用者可以通过 AbortSignal 提前终止搜索（例如找到足够多的结果后）。
