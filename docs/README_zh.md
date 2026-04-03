@@ -13,7 +13,7 @@ Foxcli 是一款在终端中使用的交互式 AI 编程助手, 它是基于[Cla
 
 #### 安装
 ```bash
-npm i @foxclicom/foxcli -g
+npm i foxcli-com -g
 ```
 
 #### 运行
@@ -42,8 +42,6 @@ bun run dev
 # 构建 and run
 bun run build && bun dist/cli.js
 ```
-
-构建采用 code splitting 多文件打包（`build.ts`），产物输出到 `dist/` 目录（入口 `dist/cli.js` + 约 450 个 chunk 文件）。
 
 构建出的版本 bun 和 node 都可以启动, 你 publish 到私有源可以直接启动
 

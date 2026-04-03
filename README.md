@@ -13,7 +13,7 @@ Why not integrate with OpenRouter? OpenRouter's API for Claude models is too exp
 
 ### Installation
 ```bash
-npm i @foxclicom/foxcli -g
+npm i foxcli-com -g
 ```
 
 ### Running
@@ -42,8 +42,6 @@ bun run dev
 # Build and run
 bun run build && bun dist/cli.js
 ```
-
-The build uses code splitting with multiple files (`build.ts`), outputting to the `dist/` directory (entry point `dist/cli.js` + ~450 chunk files).
 
 The built version can be started with both bun and node. You can publish to a private registry and start directly.
 
