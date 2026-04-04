@@ -87,7 +87,7 @@ export function useMemorySurvey(messages: Message[], isLoading: boolean, hasActi
     });
   }, []);
   const shouldShowTranscriptPrompt = useCallback((selected_0: FeedbackSurveyResponse) => {
-    if (("external" as string) !== 'ant') {
+    if ((process.env.USER_TYPE) !== 'ant') {
       return false;
     }
     if (selected_0 !== 'bad' && selected_0 !== 'good') {

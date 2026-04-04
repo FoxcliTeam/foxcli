@@ -512,7 +512,7 @@ function OverviewTab({
       </Box>
 
       {/* Speculation time saved (ant-only) */}
-      {("external" as string) === 'ant' && stats.totalSpeculationTimeSavedMs > 0 && <Box flexDirection="row" gap={4}>
+      {(process.env.USER_TYPE) === 'ant' && stats.totalSpeculationTimeSavedMs > 0 && <Box flexDirection="row" gap={4}>
             <Box flexDirection="column" width={28}>
               <Text wrap="truncate">
                 Speculation saved:{' '}
@@ -1151,7 +1151,7 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
   lines.push(row('Active days', activeDaysVal, 'Peak hour', peakHourVal));
 
   // Speculation time saved (ant-only)
-  if (("external" as string) === 'ant' && stats.totalSpeculationTimeSavedMs > 0) {
+  if ((process.env.USER_TYPE) === 'ant' && stats.totalSpeculationTimeSavedMs > 0) {
     const label = 'Speculation saved:'.padEnd(COL1_LABEL_WIDTH);
     lines.push(label + h(formatDuration(stats.totalSpeculationTimeSavedMs)));
   }

@@ -1,0 +1,51 @@
+## Allow Rules
+
+The following types of actions should be auto-approved:
+
+- Running read-only shell commands (ls, cat, head, tail, wc, echo, env, which, whereis, uname, date, whoami, pwd, stat, file, du, df, free, top -b -n 1, ps)
+- Running version and help commands (node --version, python --version, ruby --version, go version, rustc --version, cargo --version, npm --version, bun --version, git --version, --help flags)
+- Running git read-only commands (git status, git log, git diff, git show, git branch, git tag, git remote, git stash list, git config --list --local)
+- Running tests, linters, formatters, and build commands within the project (npm test, npm run lint, npm run build, bun test, cargo test, go test, pytest, jest, vitest, eslint, prettier, biome, tsc)
+- Running package install commands within the project (npm install, yarn, pnpm install, bun install, pip install within a virtual environment, cargo build)
+- Reading, writing, creating, editing, and moving files within the current working directory
+- Running common development tools (node, python, ruby, go, cargo, make, cmake, gcc, clang) for compilation and execution of project code
+- Running Docker commands for building and running project containers (docker build, docker run, docker compose)
+- Creating and switching git branches, committing, stashing (git checkout -b, git commit, git add, git stash)
+- Running cloud CLI commands for listing and describing resources (aws ... describe, gcloud ... describe, az ... show, kubectl get, kubectl describe)
+- Running infrastructure-as-code plan commands (terraform plan, pulumi preview, sam validate, cdk diff)
+
+## Deny Rules
+
+The following types of actions should be blocked (require user confirmation):
+
+- Downloading and executing untrusted code from the internet (curl | bash, wget | sh, pip install from unverified URLs, npx from unknown packages)
+- Recursive force deletion of directories or files (rm -rf, Remove-Item -Recurse -Force) unless the user explicitly requested it
+- Modifying shell profiles, login scripts, or system startup items (.bashrc, .zshrc, .profile, cron jobs, launch agents/daemons)
+- Using sudo, su, or doas for privilege escalation unless the user explicitly mentions needing it
+- Starting network servers or listeners that accept external connections (python -m http.server, nc -l, ng serve --host 0.0.0.0)
+- Disabling security tools, modifying firewall rules, changing file permissions to world-writable on sensitive paths
+- Pushing to git remotes, force-pushing, modifying remote branches
+- Exporting, printing, or logging secrets, API keys, tokens, or credentials to public or shared locations
+- Installing system-level packages outside the project (apt-get install, brew install, yum install as root)
+- Modifying files outside the current working directory and standard config paths without explicit user request
+- Running cloud CLI commands that create, modify, or delete resources (aws ... create, gcloud ... delete, az ... update, kubectl apply, kubectl delete) without explicit user confirmation
+- Running infrastructure-as-code apply commands (terraform apply, pulumi up, sam deploy, cdk deploy) without explicit user confirmation
+- Accessing or modifying production environments, databases, or services
+- Executing database migration commands on non-local databases
+- Creating or modifying CI/CD pipeline configurations
+- Running commands that generate or manage authentication credentials, SSH keys, or TLS certificates
+
+## Environment Context
+
+- The agent operates within a terminal session in the user's project directory
+- The user has chosen auto mode, meaning they trust the agent to perform routine development tasks autonomously
+- Standard development tools (git, node, python, etc.) are expected to be available
+- The project may use any common language or framework
+- The agent may have access to cloud provider CLIs and infrastructure tools
+
+<user_allow_rules_to_replace>
+</user_allow_rules_to_replace>
+<user_deny_rules_to_replace>
+</user_deny_rules_to_replace>
+<user_environment_to_replace>
+</user_environment_to_replace>

@@ -32,7 +32,7 @@ import TextInput from './TextInput.js';
 
 // This value was determined experimentally by testing the URL length limit
 const GITHUB_URL_LIMIT = 7250;
-const GITHUB_ISSUES_REPO_URL = ("external" as string) === 'ant' ? 'https://github.com/anthropics/claude-cli-internal/issues' : 'https://github.com/anthropics/claude-code/issues';
+const GITHUB_ISSUES_REPO_URL = (process.env.USER_TYPE) === 'ant' ? 'https://github.com/anthropics/claude-cli-internal/issues' : 'https://github.com/anthropics/claude-code/issues';
 type Props = {
   abortSignal: AbortSignal;
   messages: Message[];

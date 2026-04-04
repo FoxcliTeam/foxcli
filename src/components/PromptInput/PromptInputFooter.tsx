@@ -143,11 +143,11 @@ function PromptInputFooter({
         </Box>
         <Box flexShrink={1} gap={1}>
           {isFullscreen ? null : <Notifications apiKeyStatus={apiKeyStatus} autoUpdaterResult={autoUpdaterResult} debug={debug} isAutoUpdating={isAutoUpdating} verbose={verbose} messages={messages} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={onChangeIsUpdating} ideSelection={ideSelection} mcpClients={mcpClients} isInputWrapped={isInputWrapped} isNarrow={isNarrow} />}
-          {("external" as string) === 'ant' && isUndercover() && <Text dimColor>undercover</Text>}
+          {(process.env.USER_TYPE) === 'ant' && isUndercover() && <Text dimColor>undercover</Text>}
           <BridgeStatusIndicator bridgeSelected={bridgeSelected} />
         </Box>
       </Box>
-      {("external" as string) === 'ant' && <CoordinatorTaskPanel />}
+      {(process.env.USER_TYPE) === 'ant' && <CoordinatorTaskPanel />}
     </>;
 }
 export default memo(PromptInputFooter);

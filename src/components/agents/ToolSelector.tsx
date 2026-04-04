@@ -58,7 +58,7 @@ function getToolBuckets(): ToolBuckets {
     },
     EXECUTION: {
       name: 'Execution tools',
-      toolNames: new Set([BashTool.name, ("external" as string) === 'ant' ? TungstenTool.name : undefined].filter(n => n !== undefined))
+      toolNames: new Set([BashTool.name, (process.env.USER_TYPE) === 'ant' ? TungstenTool.name : undefined].filter(n => n !== undefined))
     },
     MCP: {
       name: 'MCP tools',

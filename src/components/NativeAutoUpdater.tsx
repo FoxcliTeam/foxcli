@@ -184,7 +184,7 @@ export function NativeAutoUpdater({
       {autoUpdaterResult?.status === 'install_failed' && <Text color="error" wrap="truncate">
           ✗ Auto-update failed &middot; Try <Text bold>/status</Text>
         </Text>}
-      {maxVersionIssue && ("external" as string) === 'ant' && <Text color="warning">
+      {maxVersionIssue && (process.env.USER_TYPE) === 'ant' && <Text color="warning">
           ⚠ Known issue: {maxVersionIssue} &middot; Run{' '}
           <Text bold>claude rollback --safe</Text> to downgrade
         </Text>}
