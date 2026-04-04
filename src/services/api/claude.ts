@@ -299,20 +299,6 @@ export function getExtraBodyParams(betaHeaders?: string[]): JsonObject {
     }
   }
 
-  // Anti-distillation: send fake_tools opt-in for 1P CLI only
-  if (
-    feature('ANTI_DISTILLATION_CC')
-      ? process.env.CLAUDE_CODE_ENTRYPOINT === 'cli' &&
-        shouldIncludeFirstPartyOnlyBetas() &&
-        getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_anti_distill_fake_tool_injection',
-          false,
-        )
-      : false
-  ) {
-    result.anti_distillation = ['fake_tools']
-  }
-
   // Handle beta headers if provided
   if (betaHeaders && betaHeaders.length > 0) {
     if (result.anthropic_beta && Array.isArray(result.anthropic_beta)) {
@@ -1314,6 +1300,15 @@ async function* queryModel(
     messagesForAPI,
     API_MAX_MEDIA_PER_REQUEST,
   )
+
+  // OpenAI-compatible provider: delegate to the OpenAI adapter layer
+  // after shared preprocessing (message normalization, tool filtering,
+  // media stripping) but before Anthropic-specific logic (betas, thinking, caching).
+  if (getAPIProvider() === 'openai') {
+    const { queryModelOpenAI } = await import('./openai/index.js')
+    yield* queryModelOpenAI(messagesForAPI, systemPrompt, filteredTools, signal, options)
+    return
+  }
 
   // Instrumentation: Track message count after normalization
   logEvent('tengu_api_after_normalize', {

@@ -131,4 +131,65 @@ describe("detectGitOperation", () => {
     expect(result.branch!.action).toBe("merged");
     expect(result.branch!.ref).toBe("develop");
   });
+
+  test("detects gh pr edit operation", () => {
+    const result = detectGitOperation(
+      "gh pr edit 42 --title 'new title'",
+      "https://github.com/owner/repo/pull/42"
+    );
+    expect(result.pr).toBeDefined();
+    expect(result.pr!.number).toBe(42);
+    expect(result.pr!.action).toBe("edited");
+  });
+
+  test("detects gh pr comment operation", () => {
+    const result = detectGitOperation(
+      "gh pr comment 42 --body 'looks good'",
+      "https://github.com/owner/repo/pull/42"
+    );
+    expect(result.pr).toBeDefined();
+    expect(result.pr!.number).toBe(42);
+    expect(result.pr!.action).toBe("commented");
+  });
+
+  test("detects gh pr close operation", () => {
+    const result = detectGitOperation(
+      "gh pr close 42",
+      "✓ Closed pull request owner/repo#42"
+    );
+    expect(result.pr).toBeDefined();
+    expect(result.pr!.number).toBe(42);
+    expect(result.pr!.action).toBe("closed");
+  });
+
+  test("detects gh pr ready operation", () => {
+    const result = detectGitOperation(
+      "gh pr ready 42",
+      "✓ Converted pull request owner/repo#42 to \"Ready for review\""
+    );
+    expect(result.pr).toBeDefined();
+    expect(result.pr!.number).toBe(42);
+    expect(result.pr!.action).toBe("ready");
+  });
+
+  test("handles empty command string", () => {
+    const result = detectGitOperation("", "some output");
+    expect(result.commit).toBeUndefined();
+    expect(result.push).toBeUndefined();
+    expect(result.branch).toBeUndefined();
+    expect(result.pr).toBeUndefined();
+  });
+
+  test("handles empty output string", () => {
+    const result = detectGitOperation("git commit -m 'msg'", "");
+    expect(result.commit).toBeUndefined();
+  });
+
+  test("handles malformed git commit output", () => {
+    const result = detectGitOperation(
+      "git commit -m 'msg'",
+      "error: something went wrong"
+    );
+    expect(result.commit).toBeUndefined();
+  });
 });

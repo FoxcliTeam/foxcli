@@ -116,18 +116,21 @@ export function rollWithSeed(seed: string): Roll {
   return rollFrom(mulberry32(hashString(seed)))
 }
 
+export function generateSeed(): string {
+  return `rehatch-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 export function companionUserId(): string {
   const config = getGlobalConfig()
   return config.oauthAccount?.accountUuid ?? config.userID ?? 'anon'
 }
 
-// Regenerate bones from userId, merge with stored soul. Bones never persist
-// so species renames and SPECIES-array edits can't break stored companions,
-// and editing config.companion can't fake a rarity.
+// Regenerate bones from seed or userId, merge with stored soul.
 export function getCompanion(): Companion | undefined {
   const stored = getGlobalConfig().companion
   if (!stored) return undefined
-  const { bones } = roll(companionUserId())
+  const seed = stored.seed ?? companionUserId()
+  const { bones } = rollWithSeed(seed)
   // bones last so stale bones fields in old-format configs get overridden
   return { ...stored, ...bones }
 }

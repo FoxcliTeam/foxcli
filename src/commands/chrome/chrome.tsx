@@ -186,7 +186,7 @@ function ClaudeInChromeMenu(t0) {
   } else {
     options = $[8];
   }
-  const isDisabled = isWSL || true && !isClaudeAISubscriber;
+  const isDisabled = isWSL;
   let t5;
   if ($[18] !== onDone) {
     t5 = () => onDone();
@@ -212,7 +212,7 @@ function ClaudeInChromeMenu(t0) {
   }
   let t8;
   if ($[23] !== isClaudeAISubscriber) {
-    t8 = true && !isClaudeAISubscriber && <Text color="error">Claude in Chrome requires a claude.ai subscription.</Text>;
+    t8 = false;
     $[23] = isClaudeAISubscriber;
     $[24] = t8;
   } else {

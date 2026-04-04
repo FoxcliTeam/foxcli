@@ -384,7 +384,7 @@ export async function getURLMarkdownContent(
     // This is for enterprise customers with restrictive security policies
     // that prevent outbound connections to claude.ai
     const settings = getSettings_DEPRECATED()
-    if (!settings.skipWebFetchPreflight) {
+    if (settings.skipWebFetchPreflight === false) {
       const checkResult = await checkDomainBlocklist(hostname)
       switch (checkResult.status) {
         case 'allowed':

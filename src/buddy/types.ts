@@ -111,6 +111,7 @@ export type CompanionBones = {
 export type CompanionSoul = {
   name: string
   personality: string
+  seed?: string
 }
 
 export type Companion = CompanionBones &

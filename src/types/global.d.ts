@@ -28,11 +28,7 @@ declare function getAntModelOverrideConfig(): {
   [key: string]: unknown
 } | null
 
-// Companion/buddy observer (internal)
-declare function fireCompanionObserver(
-  messages: unknown[],
-  callback: (reaction: unknown) => void,
-): void
+// Companion reactions handled by src/buddy/companionReact.ts (direct import)
 
 // Metrics (internal)
 type ApiMetricEntry = { ttftMs: number; firstTokenTime: number; lastTokenTime: number; responseLengthBaseline: number; endResponseLength: number }

@@ -415,7 +415,7 @@ const getWorkflowCommands = feature('WORKFLOW_SCRIPTS')
  * so this must be re-evaluated on every getCommands() call.
  */
 export function meetsAvailabilityRequirement(cmd: Command): boolean {
-  if (!cmd.availability) return true
+  if (!cmd.availability || cmd.availability.length === 0) return true
   for (const a of cmd.availability) {
     switch (a) {
       case 'claude-ai':
