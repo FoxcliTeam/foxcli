@@ -318,6 +318,11 @@ export function getExtraBodyParams(betaHeaders?: string[]): JsonObject {
 }
 
 export function getPromptCachingEnabled(model: string): boolean {
+  const provider = getAPIProvider()
+  if (provider !== 'firstParty' && provider !== 'bedrock' && provider !== 'vertex') {
+    return false
+  }
+  
   // Global disable takes precedence
   if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING)) return false
 
