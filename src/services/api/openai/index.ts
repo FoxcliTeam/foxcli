@@ -11,6 +11,8 @@ import { normalizeMessagesForAPI } from '../../../utils/messages.js'
 import { toolToAPISchema } from '../../../utils/api.js'
 import { getEmptyToolPermissionContext } from '../../../Tool.js'
 import { logForDebugging } from '../../../utils/debug.js'
+import { addToTotalSessionCost } from '../../../cost-tracker.js'
+import { calculateUSDCost } from '../../../utils/modelCost.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
 import {
@@ -187,6 +189,12 @@ export async function* queryModelOpenAI(
         }
         case 'message_stop':
           break
+      }
+
+      // Track cost and token usage (matching the Anthropic path in claude.ts)
+      if (event.type === 'message_stop' && usage.input_tokens + usage.output_tokens > 0) {
+        const costUSD = calculateUSDCost(openaiModel, usage as any)
+        addToTotalSessionCost(costUSD, usage as any, options.model)
       }
 
       // Also yield as StreamEvent for real-time display (matching Anthropic path)
