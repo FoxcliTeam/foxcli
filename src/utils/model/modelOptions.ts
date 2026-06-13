@@ -6,7 +6,8 @@ import {
   MINIMAX_M2_5_CONFIG,
   CLAUDE_OPUS_4_6_CONFIG,
   GLM_5_1_CONFIG,
-  GPT_5_3_CODEX_CONFIG,
+  GPT_5_4_CONFIG,
+  GPT_5_5_CONFIG,
   MOONSHOT_KIMI_K2_6_CONFIG,
   RING_2_6_1T_CONFIG,
   MIMO_2_5_PRO_CONFIG,
@@ -98,12 +99,21 @@ function getGlm51Option(): ModelOption {
   }
 }
 
-function getGptCodexOption(): ModelOption {
+function getGpt54Option(): ModelOption {
   return {
-    value: GPT_5_3_CODEX_CONFIG,
-    label: 'GPT 5.3 codex',
-    description: 'GPT 5.3 codex · Openai flagship coding model',
-    descriptionForModel: 'GPT 5.3 codex · Openai flagship coding model',
+    value: GPT_5_4_CONFIG,
+    label: 'GPT 5.4',
+    description: 'GPT 5.4 · Openai model',
+    descriptionForModel: 'GPT 5.4 · Openai model',
+  }
+}
+
+function getGpt55Option(): ModelOption {
+  return {
+    value: GPT_5_5_CONFIG,
+    label: 'GPT 5.5',
+    description: 'GPT 5.5 · Openai flagship model',
+    descriptionForModel: 'GPT 5.5 · Openai flagship model',
   }
 }
 
@@ -137,15 +147,16 @@ function getMimo25Option(): ModelOption {
 function getModelOptionsBase(): ModelOption[] {
   return [
     getDefaultOptionForUser(),
-    getMimo25ProOption(),
-    getMimo25Option(),
     getDeepSeekOption(),
     getDeepSeekThinkOption(),
+    getMimo25ProOption(),
+    getMimo25Option(),
     getMoonshotK26Option(),
     getGlm51Option(),
-    getMiniMaxOption(),
     getClaudeOpusOption(),
-    getGptCodexOption(),
+    getGpt54Option(),
+    getGpt55Option(),
+    getMiniMaxOption(),
     getRing261TOption(),
   ]
 }

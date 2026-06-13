@@ -11,7 +11,8 @@ import {
   MINIMAX_M2_5_CONFIG,
   CLAUDE_OPUS_4_6_CONFIG,
   GLM_5_1_CONFIG,
-  GPT_5_3_CODEX_CONFIG,
+  GPT_5_4_CONFIG,
+  GPT_5_5_CONFIG,
   MOONSHOT_KIMI_K2_6_CONFIG,
   RING_2_6_1T_CONFIG,
   MIMO_2_5_PRO_CONFIG,
@@ -210,8 +211,11 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
   if (model === 'glm-5.1') {
     return 'GLM 5.1'
   }
-  if (model === 'gpt-5.3-codex') {
-    return 'GPT 5.3 codex'
+  if (model === 'gpt-5.4') {
+    return 'GPT 5.4'
+  }
+  if (model === 'gpt-5.5') {
+    return 'GPT 5.5'
   }
   if (model === 'kimi-k2.6') {
     return 'Kimi K2.6'
@@ -271,8 +275,11 @@ export function parseUserSpecifiedModel(
   if (modelInputTrimmed === 'glm-5.1') {
     return GLM_5_1_CONFIG
   }
-  if (modelInputTrimmed === 'gpt-5.3-codex') {
-    return GPT_5_3_CODEX_CONFIG
+  if (modelInputTrimmed === 'gpt-5.4') {
+    return GPT_5_4_CONFIG
+  }
+  if (modelInputTrimmed === 'gpt-5.5') {
+    return GPT_5_5_CONFIG
   }
   if (modelInputTrimmed === 'kimi-k2.6') {
     return MOONSHOT_KIMI_K2_6_CONFIG
