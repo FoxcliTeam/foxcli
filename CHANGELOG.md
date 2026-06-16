@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.38
+
+- End Xiaomi Mimo model free campaign
+
 ## 0.1.37
 
 - Replace gpt-5.3-codex with gpt-5.4 and gpt-5.5

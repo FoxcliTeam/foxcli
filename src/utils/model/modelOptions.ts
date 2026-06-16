@@ -130,8 +130,8 @@ function getMimo25ProOption(): ModelOption {
   return {
     value: MIMO_2_5_PRO_CONFIG,
     label: 'Mimo 2.5 pro',
-    description: 'Mimo 2.5 pro · Xiaomi Mimo flagship model - free for 2 weeks (Recommend)',
-    descriptionForModel: 'Mimo 2.5 pro · Xiaomi Mimo flagship model - free for 2 weeks',
+    description: 'Mimo 2.5 pro · Xiaomi Mimo flagship model',
+    descriptionForModel: 'Mimo 2.5 pro · Xiaomi Mimo flagship model',
   }
 }
 
@@ -139,8 +139,8 @@ function getMimo25Option(): ModelOption {
   return {
     value: MIMO_2_5_CONFIG,
     label: 'Mimo 2.5',
-    description: 'Mimo 2.5 · Xiaomi Mimo flagship model - free for 2 weeks',
-    descriptionForModel: 'Mimo 2.5 · Xiaomi Mimo flagship model - free for 2 weeks',
+    description: 'Mimo 2.5 · Xiaomi Mimo model',
+    descriptionForModel: 'Mimo 2.5 · Xiaomi Mimo model',
   }
 }
 
