@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.39
+
+- Update GLM 5.1 to GLM 5.2
+
 ## 0.1.38
 
 - End Xiaomi Mimo model free campaign

@@ -10,7 +10,7 @@ import {
   MOONSHOT_KIMI_K2_5_CONFIG,
   MINIMAX_M2_5_CONFIG,
   CLAUDE_OPUS_4_6_CONFIG,
-  GLM_5_1_CONFIG,
+  GLM_5_2_CONFIG,
   GPT_5_4_CONFIG,
   GPT_5_5_CONFIG,
   MOONSHOT_KIMI_K2_6_CONFIG,
@@ -146,7 +146,7 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
     return 'minimax-m2.5'
   }
   if (name.includes('glm')) {
-    return 'glm-5.1'
+    return 'glm-5.2'
   }
   if (name.includes('ring-2.6-1t')) {
     return 'ring-2.6-1t'
@@ -208,8 +208,8 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
   if (model === 'claude-opus-4-6') {
     return 'Claude Opus 4.6'
   }
-  if (model === 'glm-5.1') {
-    return 'GLM 5.1'
+  if (model === 'glm-5.2') {
+    return 'GLM 5.2'
   }
   if (model === 'gpt-5.4') {
     return 'GPT 5.4'
@@ -272,8 +272,8 @@ export function parseUserSpecifiedModel(
   if (modelInputTrimmed === 'claude-opus-4-6') {
     return CLAUDE_OPUS_4_6_CONFIG
   }
-  if (modelInputTrimmed === 'glm-5.1') {
-    return GLM_5_1_CONFIG
+  if (modelInputTrimmed === 'glm-5.2') {
+    return GLM_5_2_CONFIG
   }
   if (modelInputTrimmed === 'gpt-5.4') {
     return GPT_5_4_CONFIG

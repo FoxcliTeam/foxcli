@@ -5,7 +5,7 @@ import {
   MOONSHOT_KIMI_K2_5_CONFIG,
   MINIMAX_M2_5_CONFIG,
   CLAUDE_OPUS_4_6_CONFIG,
-  GLM_5_1_CONFIG,
+  GLM_5_2_CONFIG,
   GPT_5_4_CONFIG,
   GPT_5_5_CONFIG,
   MOONSHOT_KIMI_K2_6_CONFIG,
@@ -90,12 +90,12 @@ function getClaudeOpusOption(): ModelOption {
   }
 }
 
-function getGlm51Option(): ModelOption {
+function getGlm52Option(): ModelOption {
   return {
-    value: GLM_5_1_CONFIG,
-    label: 'GLM 5.1',
-    description: 'GLM 5.1 · Z.ai flagship model',
-    descriptionForModel: 'GLM 5.1 - Z.ai flagship model',
+    value: GLM_5_2_CONFIG,
+    label: 'GLM 5.2',
+    description: 'GLM 5.2 · Z.ai flagship model',
+    descriptionForModel: 'GLM 5.2 - Z.ai flagship model',
   }
 }
 
@@ -152,7 +152,7 @@ function getModelOptionsBase(): ModelOption[] {
     getMimo25ProOption(),
     getMimo25Option(),
     getMoonshotK26Option(),
-    getGlm51Option(),
+    getGlm52Option(),
     getClaudeOpusOption(),
     getGpt54Option(),
     getGpt55Option(),

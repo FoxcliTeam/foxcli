@@ -15,7 +15,7 @@ export const MINIMAX_M2_5_CONFIG = 'minimax-m2.5' as const satisfies ModelConfig
 
 export const CLAUDE_OPUS_4_6_CONFIG = 'claude-opus-4-6' as const satisfies ModelConfig
 
-export const GLM_5_1_CONFIG = 'glm-5.1' as const satisfies ModelConfig
+export const GLM_5_2_CONFIG = 'glm-5.2' as const satisfies ModelConfig
 
 export const GPT_5_4_CONFIG = 'gpt-5.4' as const satisfies ModelConfig
 export const GPT_5_5_CONFIG = 'gpt-5.5' as const satisfies ModelConfig
@@ -36,7 +36,7 @@ export const ALL_MODEL_CONFIGS = {
   moonshot: MOONSHOT_KIMI_K2_5_CONFIG,
   minimax: MINIMAX_M2_5_CONFIG,
   claudeOpus: CLAUDE_OPUS_4_6_CONFIG,
-  glm51: GLM_5_1_CONFIG,
+  glm52: GLM_5_2_CONFIG,
   gpt54: GPT_5_4_CONFIG,
   gpt55: GPT_5_5_CONFIG,
   moonshot26: MOONSHOT_KIMI_K2_6_CONFIG,
