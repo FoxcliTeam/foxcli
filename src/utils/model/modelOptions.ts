@@ -3,7 +3,7 @@ import {
   DEEPSEEK_V4_FLASH_CONFIG,
   DEEPSEEK_V4_PRO_CONFIG,
   MOONSHOT_KIMI_K2_5_CONFIG,
-  MINIMAX_M2_5_CONFIG,
+  MINIMAX_M3_CONFIG,
   CLAUDE_OPUS_4_6_CONFIG,
   GLM_5_2_CONFIG,
   GPT_5_4_CONFIG,
@@ -74,10 +74,10 @@ function getMoonshotK25Option(): ModelOption {
 
 function getMiniMaxOption(): ModelOption {
   return {
-    value: MINIMAX_M2_5_CONFIG,
-    label: 'MiniMax M2.5',
-    description: 'MiniMax M2.5 · Most capable for complex work',
-    descriptionForModel: 'MiniMax M2.5 - most capable for complex work',
+    value: MINIMAX_M3_CONFIG,
+    label: 'MiniMax M3',
+    description: 'MiniMax M3 · MiniMax flagship model',
+    descriptionForModel: 'MiniMax M3 - MiniMax flagship model',
   }
 }
 
@@ -149,14 +149,14 @@ function getModelOptionsBase(): ModelOption[] {
     getDefaultOptionForUser(),
     getDeepSeekOption(),
     getDeepSeekThinkOption(),
-    getMimo25ProOption(),
-    getMimo25Option(),
     getMoonshotK26Option(),
     getGlm52Option(),
     getClaudeOpusOption(),
     getGpt54Option(),
     getGpt55Option(),
     getMiniMaxOption(),
+    getMimo25ProOption(),
+    getMimo25Option(),
     getRing261TOption(),
   ]
 }

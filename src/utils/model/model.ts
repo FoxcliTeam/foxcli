@@ -8,7 +8,7 @@ import {
   DEEPSEEK_V4_FLASH_CONFIG,
   DEEPSEEK_V4_PRO_CONFIG,
   MOONSHOT_KIMI_K2_5_CONFIG,
-  MINIMAX_M2_5_CONFIG,
+  MINIMAX_M3_CONFIG,
   CLAUDE_OPUS_4_6_CONFIG,
   GLM_5_2_CONFIG,
   GPT_5_4_CONFIG,
@@ -143,7 +143,7 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
     return 'kimi-k2'
   }
   if (name.includes('minimax')) {
-    return 'minimax-m2.5'
+    return 'minimax-m3'
   }
   if (name.includes('glm')) {
     return 'glm-5.2'
@@ -202,8 +202,8 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
   if (model === 'kimi-k2.5') {
     return 'Kimi K2.5'
   }
-  if (model === 'minimax-m2.5') {
-    return 'MiniMax M2.5'
+  if (model === 'minimax-m3') {
+    return 'MiniMax M3'
   }
   if (model === 'claude-opus-4-6') {
     return 'Claude Opus 4.6'
@@ -266,8 +266,8 @@ export function parseUserSpecifiedModel(
   if (modelInputTrimmed === 'kimi-k2.5') {
     return MOONSHOT_KIMI_K2_5_CONFIG
   }
-  if (modelInputTrimmed === 'minimax-m2.5') {
-    return MINIMAX_M2_5_CONFIG
+  if (modelInputTrimmed === 'minimax-m3') {
+    return MINIMAX_M3_CONFIG
   }
   if (modelInputTrimmed === 'claude-opus-4-6') {
     return CLAUDE_OPUS_4_6_CONFIG

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.40
+
+- Replace minimax-m2.5 with minimax-m3
+
 ## 0.1.39
 
 - Update GLM 5.1 to GLM 5.2

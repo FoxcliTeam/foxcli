@@ -46,7 +46,7 @@ export const MODEL_COSTS: Record<string, ModelCosts> = {
   'deepseek-v4-flash': COST_TIER_3_15,
   'kimi-k2.5': COST_TIER_3_15,
   'kimi-k2': COST_TIER_3_15,
-  'minimax-m2.5': COST_TIER_3_15,
+  'minimax-m3': COST_TIER_3_15,
   'langrouter/auto': COST_FREE_TIER,
 }
 
