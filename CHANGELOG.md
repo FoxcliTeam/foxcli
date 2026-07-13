@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.42
+
+- Fixed effort setting problem for laude-opus-4-8 
+
 ## 0.1.41
 
 - Replace claude-opus-4-6 with claude-opus-4-8
