@@ -46,7 +46,7 @@ export function modelSupports1M(model: string): boolean {
     return false
   }
   const canonical = getCanonicalName(model)
-  return canonical.includes('claude-sonnet-4') || canonical.includes('opus-4-6')
+  return canonical.includes('claude-sonnet-4') || canonical.includes('opus-4-8')
 }
 
 export function getContextWindowForModel(
@@ -165,7 +165,7 @@ export function getModelMaxOutputTokens(model: string): {
 
   const m = getCanonicalName(model)
 
-  if (m.includes('opus-4-6')) {
+  if (m.includes('opus-4-8')) {
     defaultTokens = 64_000
     upperLimit = 128_000
   } else if (m.includes('sonnet-4-6')) {
@@ -208,8 +208,8 @@ export function getModelMaxOutputTokens(model: string): {
     defaultTokens = 128_000
     upperLimit = 131000
   } else if (model === "langrouter/auto") {
-    defaultTokens = 4_096
-    upperLimit = 8_192
+    defaultTokens = 128_000
+    upperLimit = 384000
   }
 
   const cap = getModelCapability(model)
@@ -230,4 +230,51 @@ export function getModelMaxOutputTokens(model: string): {
  */
 export function getMaxThinkingTokensForModel(model: string): number {
   return getModelMaxOutputTokens(model).upperLimit - 1
+}
+
+/** Models with limited context window that need a switch-time warning. */
+const MODELS_WITH_LIMITED_CONTEXT = ['kimi-k2.7-code', 'ring-2.6-1t']
+
+/** Threshold: 90% of target model's context window. */
+const CONTEXT_WARNING_THRESHOLD = 0.9
+
+/**
+ * Check whether switching to `targetModel` should be blocked because the
+ * current conversation context would dominate or exceed the target model's
+ * context window.
+ *
+ * Returns `{ needsWarning: true, message }` when the switch should be blocked;
+ * `{ needsWarning: false }` when the switch is safe.
+ */
+export function checkContextSwitchNeedsWarning(
+  targetModel: string,
+  currentContextTokens: number | null,
+): { needsWarning: boolean; message?: string } {
+  // Only applies to limited-context models
+  const modelLower = targetModel.toLowerCase()
+  if (!MODELS_WITH_LIMITED_CONTEXT.some(m => modelLower.includes(m))) {
+    return { needsWarning: false }
+  }
+
+  // No messages yet — always safe
+  if (!currentContextTokens || currentContextTokens <= 0) {
+    return { needsWarning: false }
+  }
+
+  const contextWindow = getContextWindowForModel(targetModel)
+  const threshold = Math.floor(contextWindow * CONTEXT_WARNING_THRESHOLD)
+
+  if (currentContextTokens >= threshold) {
+    const usedPercent = Math.round((currentContextTokens / contextWindow) * 100)
+    return {
+      needsWarning: true,
+      message:
+        `Cannot switch to ${targetModel}: current conversation context ` +
+        `(${currentContextTokens.toLocaleString()} tokens, ${usedPercent}% of model's ` +
+        `${contextWindow.toLocaleString()} token limit) exceeds the safe threshold. ` +
+        `Start a new session or /compact before switching to this model.`,
+    }
+  }
+
+  return { needsWarning: false }
 }

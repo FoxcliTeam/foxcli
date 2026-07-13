@@ -2,13 +2,12 @@ import {
   LANGROUTER_AUTO_CONFIG,
   DEEPSEEK_V4_FLASH_CONFIG,
   DEEPSEEK_V4_PRO_CONFIG,
-  MOONSHOT_KIMI_K2_5_CONFIG,
   MINIMAX_M3_CONFIG,
-  CLAUDE_OPUS_4_6_CONFIG,
+  CLAUDE_OPUS_CONFIG,
   GLM_5_2_CONFIG,
   GPT_5_4_CONFIG,
-  GPT_5_5_CONFIG,
-  MOONSHOT_KIMI_K2_6_CONFIG,
+  GPT_5_6_CONFIG,
+  MOONSHOT_KIMI_K2_7_CONFIG,
   RING_2_6_1T_CONFIG,
   MIMO_2_5_PRO_CONFIG,
   MIMO_2_5_CONFIG,
@@ -54,21 +53,12 @@ function getDeepSeekThinkOption(): ModelOption {
   }
 }
 
-function getMoonshotK26Option(): ModelOption {
+function getMoonshotK27Option(): ModelOption {
   return {
-    value: MOONSHOT_KIMI_K2_6_CONFIG,
-    label: 'Kimi K2.6',
-    description: 'Kimi K2.6 · Flagship model',
-    descriptionForModel: 'Kimi K2.6 - Flagship model',
-  }
-}
-
-function getMoonshotK25Option(): ModelOption {
-  return {
-    value: MOONSHOT_KIMI_K2_5_CONFIG,
-    label: 'Kimi K2.5',
-    description: 'Kimi K2.5 · Fast and capable',
-    descriptionForModel: 'Kimi K2.5 - fast and capable',
+    value: MOONSHOT_KIMI_K2_7_CONFIG,
+    label: 'Kimi K2.7 code',
+    description: 'Kimi K2.7 code · Flagship coding model',
+    descriptionForModel: 'Kimi K2.7 code - Flagship coding model',
   }
 }
 
@@ -83,10 +73,10 @@ function getMiniMaxOption(): ModelOption {
 
 function getClaudeOpusOption(): ModelOption {
   return {
-    value: CLAUDE_OPUS_4_6_CONFIG,
-    label: 'Claude Opus 4.6',
-    description: 'Claude Opus 4.6 · Anthropic flagship model',
-    descriptionForModel: 'Claude Opus 4.6 - Anthropic flagship model',
+    value: CLAUDE_OPUS_CONFIG,
+    label: 'Claude Opus 4.8',
+    description: 'Claude Opus 4.8 · Anthropic flagship model',
+    descriptionForModel: 'Claude Opus 4.8 - Anthropic flagship model',
   }
 }
 
@@ -108,12 +98,12 @@ function getGpt54Option(): ModelOption {
   }
 }
 
-function getGpt55Option(): ModelOption {
+function getGpt56Option(): ModelOption {
   return {
-    value: GPT_5_5_CONFIG,
-    label: 'GPT 5.5',
-    description: 'GPT 5.5 · Openai flagship model',
-    descriptionForModel: 'GPT 5.5 · Openai flagship model',
+    value: GPT_5_6_CONFIG,
+    label: 'GPT 5.6 Sol',
+    description: 'GPT 5.6 Sol · Openai flagship model',
+    descriptionForModel: 'GPT 5.6 Sol · Openai flagship model',
   }
 }
 
@@ -149,11 +139,11 @@ function getModelOptionsBase(): ModelOption[] {
     getDefaultOptionForUser(),
     getDeepSeekOption(),
     getDeepSeekThinkOption(),
-    getMoonshotK26Option(),
     getGlm52Option(),
     getClaudeOpusOption(),
+    getMoonshotK27Option(),
+    getGpt56Option(),
     getGpt54Option(),
-    getGpt55Option(),
     getMiniMaxOption(),
     getMimo25ProOption(),
     getMimo25Option(),

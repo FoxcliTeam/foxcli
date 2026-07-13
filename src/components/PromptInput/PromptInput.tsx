@@ -44,6 +44,7 @@ import { getNativeCSIuTerminalDisplayName } from '../../commands/terminalSetup/t
 import { type Command, hasCommand } from '../../commands.js'
 import { useIsModalOverlayActive } from '../../context/overlayContext.js'
 import { useSetPromptOverlayDialog } from '../../context/promptOverlayContext.js'
+import { checkContextSwitchNeedsWarning } from '../../utils/context.js'
 import {
   formatImageRef,
   formatPastedTextRef,
@@ -2609,6 +2610,24 @@ function PromptInput({
   // from visually "jumping" when notifications arrive.
   const handleModelSelect = useCallback(
     (model: string | null, _effort: EffortLevel | undefined) => {
+      // Check context window before switching to limited-context models
+      if (model) {
+        const { needsWarning, message } = checkContextSwitchNeedsWarning(
+          model,
+          store.getState().currentContextTokens,
+        )
+        if (needsWarning) {
+          setShowModelPicker(false)
+          addNotification({
+            key: 'model-switch-blocked',
+            jsx: <Text>{message}</Text>,
+            priority: 'immediate',
+            timeoutMs: 5000,
+          })
+          return
+        }
+      }
+
       let wasFastModeDisabled = false
       setAppState(prev => {
         wasFastModeDisabled =

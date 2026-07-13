@@ -81,6 +81,7 @@ import { logForDebugging } from '../utils/debug.js'
 import { QueryGuard } from '../utils/QueryGuard.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 import { formatTokens, truncateToWidth } from '../utils/format.js'
+import { tokenCountWithEstimation } from '../utils/tokens.js'
 import { consumeEarlyInput } from '../utils/earlyInput.js'
 
 import { setMemberActive } from '../utils/swarm/teamHelpers.js'
@@ -3829,6 +3830,10 @@ export function REPL({
 
       // Signal that a query turn has completed successfully
       await onTurnComplete?.(messagesRef.current)
+      // Update current context token count for model-switch validation
+      store.setState({
+        currentContextTokens: tokenCountWithEstimation(messagesRef.current),
+      })
     },
     [
       initialMcpClients,

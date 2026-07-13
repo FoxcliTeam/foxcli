@@ -29,6 +29,7 @@ import {
 } from '../../utils/model/model.js'
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js'
 import { validateModel } from '../../utils/model/validateModel.js'
+import { checkContextSwitchNeedsWarning } from '../../utils/context.js'
 
 function ModelPickerWrapper({
   onDone,
@@ -41,6 +42,7 @@ function ModelPickerWrapper({
   const mainLoopModel = useAppState(s => s.mainLoopModel)
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
   const isFastMode = useAppState(s => s.fastMode)
+  const currentContextTokens = useAppState(s => s.currentContextTokens)
   const setAppState = useSetAppState()
 
   function handleCancel(): void {
@@ -58,6 +60,18 @@ function ModelPickerWrapper({
     model: string | null,
     effort: EffortLevel | undefined,
   ): void {
+    // Check context window before switching to limited-context models
+    if (model) {
+      const { needsWarning, message } = checkContextSwitchNeedsWarning(
+        model,
+        currentContextTokens,
+      )
+      if (needsWarning) {
+        onDone(message, { display: 'system' })
+        return
+      }
+    }
+
     logEvent('tengu_model_command_menu', {
       action:
         model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -144,6 +158,7 @@ function SetModelAndClose({
   ) => void
 }): React.ReactNode {
   const isFastMode = useAppState(s => s.fastMode)
+  const currentContextTokens = useAppState(s => s.currentContextTokens)
   const setAppState = useSetAppState()
   const model = args === 'default' ? null : args
 
@@ -172,6 +187,18 @@ function SetModelAndClose({
           { display: 'system' },
         )
         return
+      }
+
+      // Check context window before switching to limited-context models
+      if (model) {
+        const { needsWarning, message } = checkContextSwitchNeedsWarning(
+          model,
+          currentContextTokens,
+        )
+        if (needsWarning) {
+          onDone(message, { display: 'system' })
+          return
+        }
       }
 
       // Skip validation for default model

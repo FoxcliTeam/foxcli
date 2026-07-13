@@ -34,7 +34,7 @@ export function modelSupportsEffort(model: string): boolean {
   }
   // Supported by a subset of Claude 4 models
   if (
-    m.includes('opus-4-7') ||
+    m.includes('opus-4-8') ||
     m.includes('opus-4-6') ||
     m.includes('sonnet-4-6') ||
     m.includes('deepseek-v4-flash') ||
@@ -70,7 +70,7 @@ export function modelSupportsMaxEffort(model: string): boolean {
     return true
   }
   if (
-    model.toLowerCase().includes('opus-4-7') ||
+    model.toLowerCase().includes('opus-4-8') ||
     model.toLowerCase().includes('opus-4-6')
   ) {
     return true
@@ -88,7 +88,7 @@ export function modelSupportsXhighEffort(model: string): boolean {
   if (supported3P !== undefined) {
     return supported3P
   }
-  if (model.toLowerCase().includes('opus-4-7')) {
+  if (model.toLowerCase().includes('opus-4-8')) {
     return true
   }
   if (process.env.USER_TYPE === 'ant' && resolveAntModel(model)) {
@@ -351,7 +351,7 @@ export function getDefaultEffortForModel(
   // Default effort on Opus 4.6 to medium for Pro.
   // Max/Team also get medium when the tengu_grey_step2 config is enabled.
   if (
-    model.toLowerCase().includes('opus-4-7') ||
+    model.toLowerCase().includes('opus-4-8') ||
     model.toLowerCase().includes('opus-4-6')
   ) {
     if (isProSubscriber()) {

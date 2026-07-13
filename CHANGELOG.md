@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.41
+
+- Replace claude-opus-4-6 with claude-opus-4-8
+- Replace gpt-5.5 with gpt-5.6-sol
+- Replace kimi-k2.6 with kimi-k2.7-code
+
 ## 0.1.40
 
 - Replace minimax-m2.5 with minimax-m3

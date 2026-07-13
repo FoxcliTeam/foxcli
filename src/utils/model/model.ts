@@ -9,11 +9,11 @@ import {
   DEEPSEEK_V4_PRO_CONFIG,
   MOONSHOT_KIMI_K2_5_CONFIG,
   MINIMAX_M3_CONFIG,
-  CLAUDE_OPUS_4_6_CONFIG,
+  CLAUDE_OPUS_CONFIG,
   GLM_5_2_CONFIG,
   GPT_5_4_CONFIG,
-  GPT_5_5_CONFIG,
-  MOONSHOT_KIMI_K2_6_CONFIG,
+  GPT_5_6_CONFIG,
+  MOONSHOT_KIMI_K2_7_CONFIG,
   RING_2_6_1T_CONFIG,
   MIMO_2_5_PRO_CONFIG,
   MIMO_2_5_CONFIG,
@@ -70,7 +70,7 @@ export function getMainLoopModel(): ModelName {
 }
 
 export function getBestModel(): ModelName {
-  return CLAUDE_OPUS_4_6_CONFIG
+  return CLAUDE_OPUS_CONFIG
 }
 
 export function getDefaultOpusModel(): ModelName {
@@ -81,7 +81,7 @@ export function getDefaultOpusModel(): ModelName {
   if (model && model.startsWith('custom:')) {
     return model
   }
-  return CLAUDE_OPUS_4_6_CONFIG
+  return CLAUDE_OPUS_CONFIG
 }
 
 export function getDefaultSonnetModel(): ModelName {
@@ -130,8 +130,8 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
   if (name.includes('deepseek-v4-flash')) {
     return 'deepseek-v4-flash'
   }
-  if (name.includes('kimi-k2.6')) {
-    return 'kimi-k2.6'
+  if (name.includes('kimi-k2.7-code')) {
+    return 'kimi-k2.7-code'
   }
   if (name.includes('kimi-k2.5')) {
     return 'kimi-k2.5'
@@ -205,8 +205,8 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
   if (model === 'minimax-m3') {
     return 'MiniMax M3'
   }
-  if (model === 'claude-opus-4-6') {
-    return 'Claude Opus 4.6'
+  if (model === 'claude-opus-4-8') {
+    return 'Claude Opus 4.8'
   }
   if (model === 'glm-5.2') {
     return 'GLM 5.2'
@@ -214,11 +214,11 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
   if (model === 'gpt-5.4') {
     return 'GPT 5.4'
   }
-  if (model === 'gpt-5.5') {
-    return 'GPT 5.5'
+  if (model === 'gpt-5.6-sol') {
+    return 'GPT 5.6 Sol'
   }
-  if (model === 'kimi-k2.6') {
-    return 'Kimi K2.6'
+  if (model === 'kimi-k2.7-code') {
+    return 'Kimi K2.7 code'
   }
   if (model === 'ring-2.6-1t') {
     return 'Ring 2.6 1T'
@@ -269,8 +269,8 @@ export function parseUserSpecifiedModel(
   if (modelInputTrimmed === 'minimax-m3') {
     return MINIMAX_M3_CONFIG
   }
-  if (modelInputTrimmed === 'claude-opus-4-6') {
-    return CLAUDE_OPUS_4_6_CONFIG
+  if (modelInputTrimmed === 'claude-opus-4-8') {
+    return CLAUDE_OPUS_CONFIG
   }
   if (modelInputTrimmed === 'glm-5.2') {
     return GLM_5_2_CONFIG
@@ -278,11 +278,11 @@ export function parseUserSpecifiedModel(
   if (modelInputTrimmed === 'gpt-5.4') {
     return GPT_5_4_CONFIG
   }
-  if (modelInputTrimmed === 'gpt-5.5') {
-    return GPT_5_5_CONFIG
+  if (modelInputTrimmed === 'gpt-5.6-sol') {
+    return GPT_5_6_CONFIG
   }
-  if (modelInputTrimmed === 'kimi-k2.6') {
-    return MOONSHOT_KIMI_K2_6_CONFIG
+  if (modelInputTrimmed === 'kimi-k2.7-code') {
+    return MOONSHOT_KIMI_K2_7_CONFIG
   }
   if (modelInputTrimmed === 'ring-2.6-1t') {
     return RING_2_6_1T_CONFIG
