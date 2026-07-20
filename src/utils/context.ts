@@ -208,8 +208,8 @@ export function getModelMaxOutputTokens(model: string): {
     defaultTokens = 128_000
     upperLimit = 131000
   } else if (model === "langrouter/auto") {
-    defaultTokens = 128_000
-    upperLimit = 384000
+    defaultTokens = 4_096
+    upperLimit = 8_192
   }
 
   const cap = getModelCapability(model)

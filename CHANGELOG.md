@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.43
+
+- Fix free model max_tokens problem
+
 ## 0.1.42
 
 - Fixed effort setting problem for laude-opus-4-8 
