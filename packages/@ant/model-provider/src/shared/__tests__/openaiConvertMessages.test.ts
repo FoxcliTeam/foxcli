@@ -272,6 +272,210 @@ describe('anthropicMessagesToOpenAI', () => {
       'data:image/png;base64,ABC123',
     )
   })
+
+  test('drops image with empty or whitespace-only base64 data', () => {
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeUserMsg([
+          { type: 'text', text: 'hi' },
+          {
+            type: 'image' as const,
+            source: { type: 'base64', media_type: 'image/png', data: '   \n ' },
+          },
+        ]),
+      ],
+      [] as any,
+    )
+    expect(result).toEqual([{ role: 'user', content: 'hi' }])
+  })
+
+  test('strips whitespace from base64 data', () => {
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeUserMsg([
+          {
+            type: 'image' as const,
+            source: { type: 'base64', media_type: 'image/png', data: 'iVBO Rw0K\nGgo=' },
+          },
+        ]),
+      ],
+      [] as any,
+    )
+    expect((result[0].content as any[])[0].image_url.url).toBe(
+      'data:image/png;base64,iVBORw0KGgo=',
+    )
+  })
+
+  test('extracts images from tool_result content into follow-up user message', () => {
+    // OpenAI 不允许 tool 消息携带 image_url，tool_result 内的图片
+    // 应转为紧随 tool 消息之后的 user 多模态消息，而不是被丢弃
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeUserMsg('read the png'),
+        makeAssistantMsg([
+          {
+            type: 'tool_use' as const,
+            id: 'toolu_img',
+            name: 'Read',
+            input: { file_path: '/tmp/a.png' },
+          },
+        ]),
+        makeUserMsg([
+          {
+            type: 'tool_result' as const,
+            tool_use_id: 'toolu_img',
+            content: [
+              { type: 'text' as const, text: 'image loaded' },
+              {
+                type: 'image' as const,
+                source: {
+                  type: 'base64',
+                  media_type: 'image/jpeg',
+                  data: '/9j/4AAQ',
+                },
+              },
+            ],
+          },
+        ]),
+      ],
+      [] as any,
+    )
+    expect(result).toHaveLength(4)
+    // tool 消息只含文本，紧跟在 assistant tool_calls 之后
+    expect(result[2]).toEqual({
+      role: 'tool',
+      tool_call_id: 'toolu_img',
+      content: 'image loaded',
+    })
+    // 图片挂在后续 user 消息上
+    expect((result[3] as any).role).toBe('user')
+    expect(result[3].content).toEqual([
+      {
+        type: 'image_url',
+        image_url: { url: 'data:image/jpeg;base64,/9j/4AAQ' },
+      },
+    ])
+  })
+
+  test('extracts images from image-only tool_result content', () => {
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeAssistantMsg([
+          {
+            type: 'tool_use' as const,
+            id: 'toolu_shot',
+            name: 'screenshot',
+            input: {},
+          },
+        ]),
+        makeUserMsg([
+          {
+            type: 'tool_result' as const,
+            tool_use_id: 'toolu_shot',
+            content: [
+              {
+                type: 'image' as const,
+                source: {
+                  type: 'base64',
+                  media_type: 'image/png',
+                  data: 'iVBORw0KGgo=',
+                },
+              },
+            ],
+          },
+        ]),
+      ],
+      [] as any,
+    )
+    expect(result).toHaveLength(3)
+    expect(result[1]).toEqual({
+      role: 'tool',
+      tool_call_id: 'toolu_shot',
+      content: '',
+    })
+    expect(result[2].content).toEqual([
+      {
+        type: 'image_url',
+        image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' },
+      },
+    ])
+  })
+
+  test('merges direct images and tool_result images in order after text', () => {
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeAssistantMsg([
+          {
+            type: 'tool_use' as const,
+            id: 'toolu_1',
+            name: 'shot',
+            input: {},
+          },
+        ]),
+        makeUserMsg([
+          {
+            type: 'tool_result' as const,
+            tool_use_id: 'toolu_1',
+            content: [
+              {
+                type: 'image' as const,
+                source: { type: 'base64', media_type: 'image/png', data: 'TOOLIMG' },
+              },
+            ],
+          },
+          { type: 'text' as const, text: 'compare:' },
+          {
+            type: 'image' as const,
+            source: { type: 'base64', media_type: 'image/png', data: 'DIRECTIMG' },
+          },
+        ]),
+      ],
+      [] as any,
+    )
+    expect(result).toHaveLength(3)
+    // tool_result 图片在最前（贴近其 tool 消息），其后按原始顺序
+    expect(result[2].content).toEqual([
+      {
+        type: 'image_url',
+        image_url: { url: 'data:image/png;base64,TOOLIMG' },
+      },
+      { type: 'text', text: 'compare:' },
+      {
+        type: 'image_url',
+        image_url: { url: 'data:image/png;base64,DIRECTIMG' },
+      },
+    ])
+  })
+
+  test('preserves text/image interleaved order within a user message', () => {
+    const result = anthropicMessagesToOpenAI(
+      [
+        makeUserMsg([
+          {
+            type: 'image' as const,
+            source: { type: 'base64', media_type: 'image/png', data: 'IMG1' },
+          },
+          { type: 'text' as const, text: 'compare these' },
+          {
+            type: 'image' as const,
+            source: { type: 'base64', media_type: 'image/png', data: 'IMG2' },
+          },
+        ]),
+      ],
+      [] as any,
+    )
+    expect(result[0].content).toEqual([
+      {
+        type: 'image_url',
+        image_url: { url: 'data:image/png;base64,IMG1' },
+      },
+      { type: 'text', text: 'compare these' },
+      {
+        type: 'image_url',
+        image_url: { url: 'data:image/png;base64,IMG2' },
+      },
+    ])
+  })
 })
 
 describe('DeepSeek thinking mode (enableThinking)', () => {

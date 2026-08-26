@@ -19,7 +19,7 @@ const result = await Bun.build({
     'process.env.NODE_ENV': JSON.stringify('production'),
     'process.env.DISABLE_TELEMETRY': JSON.stringify('1'),
   },
-  features: ['BUDDY', 'ACP'],
+  features: ['BUDDY', 'ACP', 'GOAL'],
 })
 
 if (!result.success) {

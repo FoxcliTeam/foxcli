@@ -48,6 +48,7 @@ import {
   type ContextCollapseSnapshotEntry,
   type Entry,
   type FileHistorySnapshotMessage,
+  type GoalState,
   type LogOption,
   type PersistedWorktreeSession,
   type SerializedMessage,
@@ -529,6 +530,10 @@ export function setRemoteIngressUrlForTesting(url: string): void {
 
 const REMOTE_FLUSH_INTERVAL_MS = 10
 
+// Limit the number of cached session-file lookups to prevent unbounded Map growth
+// in long-running daemon / swarm sessions that spawn many sub-agents.
+const MAX_CACHED_SESSION_FILES = 200
+
 class Project {
   // Minimal cache for current session only (not all sessions)
   currentSessionTag: string | undefined
@@ -538,6 +543,7 @@ class Project {
   currentSessionLastPrompt: string | undefined
   currentSessionAgentSetting: string | undefined
   currentSessionMode: 'coordinator' | 'normal' | undefined
+  currentSessionGoal: GoalState | undefined
   // Tri-state: undefined = never touched (don't write), null = exited worktree,
   // object = currently in worktree. reAppendSessionMetadata writes null so
   // --resume knows the session exited (vs. crashed while inside).
@@ -577,6 +583,7 @@ class Project {
     this.flushTimer = null
     this.activeDrain = null
     this.writeQueues = new Map()
+    this.existingSessionFiles = new Map()
   }
 
   private incrementPendingWrites(): void {
@@ -609,6 +616,13 @@ class Project {
       if (!queue) {
         queue = []
         this.writeQueues.set(filePath, queue)
+      }
+      // Drop oldest entries when queue exceeds limit to prevent unbounded memory growth
+      if (queue.length >= 1000) {
+        const dropped = queue.splice(0, queue.length - 999)
+        for (const d of dropped) {
+          d.resolve()
+        }
       }
       queue.push({ entry, resolve })
       this.scheduleDrain()
@@ -813,6 +827,14 @@ class Project {
         type: 'mode',
         mode: this.currentSessionMode,
         sessionId,
+      })
+    }
+    if (this.currentSessionGoal) {
+      appendEntryToFile(this.sessionFile, {
+        type: 'goal',
+        sessionId,
+        state: this.currentSessionGoal,
+        timestamp: new Date().toISOString(),
       })
     }
     if (this.currentSessionWorktree !== undefined) {
@@ -1214,6 +1236,10 @@ class Project {
     } else if (entry.type === 'marble-origami-snapshot') {
       // Always append. Last-wins on restore — later entries supersede.
       void this.enqueueWrite(sessionFile, entry)
+    } else if (entry.type === 'goal') {
+      void this.enqueueWrite(sessionFile, entry)
+    } else if (entry.type === 'goal-cleared') {
+      void this.enqueueWrite(sessionFile, entry)
     } else {
       const messageSet = await getSessionMessages(sessionId)
       if (entry.type === 'queue-operation') {
@@ -1281,6 +1307,9 @@ class Project {
    * Returns the session file path if it exists, null otherwise.
    * Used for writing to sessions other than the current one.
    * Caches positive results so we only stat once per session.
+   *
+   * The cache is bounded at MAX_CACHED_SESSION_FILES to prevent unbounded
+   * growth in long-running daemon / swarm sessions that spawn many agents.
    */
   private existingSessionFiles = new Map<string, string>()
   private async getExistingSessionFile(
@@ -1292,6 +1321,13 @@ class Project {
     const targetFile = getTranscriptPathForSession(sessionId)
     try {
       await stat(targetFile)
+      // Evict oldest entry when at capacity so the Map stays bounded
+      if (this.existingSessionFiles.size >= MAX_CACHED_SESSION_FILES) {
+        const oldestKey = this.existingSessionFiles.keys().next().value
+        if (oldestKey !== undefined) {
+          this.existingSessionFiles.delete(oldestKey)
+        }
+      }
       this.existingSessionFiles.set(sessionId, targetFile)
       return targetFile
     } catch (e) {
@@ -1927,9 +1963,9 @@ function applyPreservedSegmentRelinks(
       messages.set(uuid, {
         ...msg,
         message: {
-          ...msg.message,
+          ...msg.message!,
           usage: {
-            ...msg.message.usage,
+            ...msg.message!.usage,
             input_tokens: 0,
             output_tokens: 0,
             cache_creation_input_tokens: 0,
@@ -2131,7 +2167,7 @@ function recoverOrphanedParallelToolResults(
   // already in chain order, so later iterations overwrite → last wins.
   const anchorByMsgId = new Map<string, ChainAssistant>()
   for (const a of chainAssistants) {
-    if (a.message.id) anchorByMsgId.set(a.message.id, a)
+    if (a.message!.id) anchorByMsgId.set(a.message!.id, a)
   }
 
   // O(n) precompute: sibling groups and TR index.
@@ -2140,15 +2176,17 @@ function recoverOrphanedParallelToolResults(
   const siblingsByMsgId = new Map<string, TranscriptMessage[]>()
   const toolResultsByAsst = new Map<UUID, TranscriptMessage[]>()
   for (const m of messages.values()) {
-    if (m.type === 'assistant' && m.message.id) {
-      const group = siblingsByMsgId.get(m.message.id)
+    if (m.type === 'assistant' && m.message!.id) {
+      const group = siblingsByMsgId.get(m.message!.id)
       if (group) group.push(m)
-      else siblingsByMsgId.set(m.message.id, [m])
+      else siblingsByMsgId.set(m.message!.id, [m])
     } else if (
       m.type === 'user' &&
       m.parentUuid &&
-      Array.isArray(m.message.content) &&
-      m.message.content.some(b => b.type === 'tool_result')
+      Array.isArray(m.message!.content) &&
+      (m.message!.content as Array<{ type: string }>).some(
+        b => b.type === 'tool_result',
+      )
     ) {
       const group = toolResultsByAsst.get(m.parentUuid)
       if (group) group.push(m)
@@ -2164,7 +2202,7 @@ function recoverOrphanedParallelToolResults(
   const inserts = new Map<UUID, TranscriptMessage[]>()
   let recoveredCount = 0
   for (const asst of chainAssistants) {
-    const msgId = asst.message.id
+    const msgId = asst.message!.id
     if (!msgId || processedGroups.has(msgId)) continue
     processedGroups.add(msgId)
 
@@ -2700,6 +2738,48 @@ export async function saveTag(sessionId: UUID, tag: string, fullPath?: string) {
 }
 
 /**
+ * Persist a goal-state checkpoint to the JSONL transcript. Called by
+ * src/services/goal/goalStorage.ts on every mutation. The latest entry
+ * wins on read; older entries are harmlessly ignored.
+ *
+ * Cached on Project so reAppendSessionMetadata can keep the goal alive
+ * past compaction's tail-read window.
+ */
+export function saveGoal(
+  sessionId: UUID,
+  state: GoalState,
+  fullPath?: string,
+): void {
+  const resolvedPath = fullPath ?? getTranscriptPathForSession(sessionId)
+  appendEntryToFile(resolvedPath, {
+    type: 'goal',
+    sessionId,
+    state,
+    timestamp: new Date().toISOString(),
+  })
+  if (sessionId === getSessionId()) {
+    getProject().currentSessionGoal = state
+  }
+}
+
+/**
+ * Persist a "goal cleared" tombstone so a future --resume cannot
+ * resurrect the goal from a prior `goal` entry. Also drops the
+ * in-memory cache for the current session.
+ */
+export function clearGoalEntry(sessionId: UUID, fullPath?: string): void {
+  const resolvedPath = fullPath ?? getTranscriptPathForSession(sessionId)
+  appendEntryToFile(resolvedPath, {
+    type: 'goal-cleared',
+    sessionId,
+    timestamp: new Date().toISOString(),
+  })
+  if (sessionId === getSessionId()) {
+    getProject().currentSessionGoal = undefined
+  }
+}
+
+/**
  * Link a session to a GitHub pull request.
  * This stores the PR number, URL, and repository for tracking and navigation.
  */
@@ -2767,6 +2847,7 @@ export function restoreSessionMetadata(meta: {
   prNumber?: number
   prUrl?: string
   prRepository?: string
+  goal?: GoalState
 }): void {
   const project = getProject()
   // ??= so --name (cacheSessionTitle) wins over the resumed
@@ -2783,6 +2864,7 @@ export function restoreSessionMetadata(meta: {
     project.currentSessionPrNumber = meta.prNumber
   if (meta.prUrl) project.currentSessionPrUrl = meta.prUrl
   if (meta.prRepository) project.currentSessionPrRepository = meta.prRepository
+  if (meta.goal) project.currentSessionGoal = meta.goal
 }
 
 /**
@@ -2799,6 +2881,7 @@ export function clearSessionMetadata(): void {
   project.currentSessionLastPrompt = undefined
   project.currentSessionAgentSetting = undefined
   project.currentSessionMode = undefined
+  project.currentSessionGoal = undefined
   project.currentSessionWorktree = undefined
   project.currentSessionPrNumber = undefined
   project.currentSessionPrUrl = undefined
@@ -2973,6 +3056,7 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
       prRepositories,
       modes,
       worktreeStates,
+      goals,
       fileHistorySnapshots,
       attributionSnapshots,
       contentReplacements,
@@ -2982,7 +3066,10 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
     } = await loadTranscriptFile(sessionFile)
 
     if (messages.size === 0) {
-      return log
+      const fallbackGoal = log.sessionId
+        ? goals.get(log.sessionId as UUID)
+        : undefined
+      return fallbackGoal ? { ...log, goal: fallbackGoal } : log
     }
 
     // Find the most recent user/assistant leaf message from the transcript
@@ -2993,7 +3080,10 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
         (msg.type === 'user' || msg.type === 'assistant'),
     )
     if (!mostRecentLeaf) {
-      return log
+      const fallbackGoal = log.sessionId
+        ? goals.get(log.sessionId as UUID)
+        : undefined
+      return fallbackGoal ? { ...log, goal: fallbackGoal } : log
     }
 
     // Build the conversation chain from this leaf
@@ -3019,6 +3109,7 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
         sessionId && worktreeStates.has(sessionId)
           ? worktreeStates.get(sessionId)
           : log.worktreeSession,
+      goal: sessionId ? goals.get(sessionId) : log.goal,
       prNumber: sessionId ? prNumbers.get(sessionId) : log.prNumber,
       prUrl: sessionId ? prUrls.get(sessionId) : log.prUrl,
       prRepository: sessionId
@@ -3120,6 +3211,8 @@ const METADATA_TYPE_MARKERS = [
   '"type":"agent-setting"',
   '"type":"mode"',
   '"type":"worktree-state"',
+  '"type":"goal"',
+  '"type":"goal-cleared"',
   '"type":"pr-link"',
 ]
 const METADATA_MARKER_BUFS = METADATA_TYPE_MARKERS.map(m => Buffer.from(m))
@@ -3486,6 +3579,7 @@ export async function loadTranscriptFile(
   prRepositories: Map<UUID, string>
   modes: Map<UUID, string>
   worktreeStates: Map<UUID, PersistedWorktreeSession | null>
+  goals: Map<UUID, GoalState>
   fileHistorySnapshots: Map<UUID, FileHistorySnapshotMessage>
   attributionSnapshots: Map<UUID, AttributionSnapshotMessage>
   contentReplacements: Map<UUID, ContentReplacementRecord[]>
@@ -3506,6 +3600,7 @@ export async function loadTranscriptFile(
   const prRepositories = new Map<UUID, string>()
   const modes = new Map<UUID, string>()
   const worktreeStates = new Map<UUID, PersistedWorktreeSession | null>()
+  const goals = new Map<UUID, GoalState>()
   const fileHistorySnapshots = new Map<UUID, FileHistorySnapshotMessage>()
   const attributionSnapshots = new Map<UUID, AttributionSnapshotMessage>()
   const contentReplacements = new Map<UUID, ContentReplacementRecord[]>()
@@ -3604,6 +3699,10 @@ export async function loadTranscriptFile(
           modes.set(entry.sessionId, entry.mode)
         } else if (entry.type === 'worktree-state' && entry.sessionId) {
           worktreeStates.set(entry.sessionId, entry.worktreeSession)
+        } else if (entry.type === 'goal' && entry.sessionId) {
+          goals.set(entry.sessionId, entry.state)
+        } else if (entry.type === 'goal-cleared' && entry.sessionId) {
+          goals.delete(entry.sessionId)
         } else if (entry.type === 'pr-link' && entry.sessionId) {
           prNumbers.set(entry.sessionId, entry.prNumber)
           prUrls.set(entry.sessionId, entry.prUrl)
@@ -3672,6 +3771,10 @@ export async function loadTranscriptFile(
         modes.set(entry.sessionId, entry.mode)
       } else if (entry.type === 'worktree-state' && entry.sessionId) {
         worktreeStates.set(entry.sessionId, entry.worktreeSession)
+      } else if (entry.type === 'goal' && entry.sessionId) {
+        goals.set(entry.sessionId, entry.state)
+      } else if (entry.type === 'goal-cleared' && entry.sessionId) {
+        goals.delete(entry.sessionId)
       } else if (entry.type === 'pr-link' && entry.sessionId) {
         prNumbers.set(entry.sessionId, entry.prNumber)
         prUrls.set(entry.sessionId, entry.prUrl)
@@ -3803,6 +3906,7 @@ export async function loadTranscriptFile(
     prRepositories,
     modes,
     worktreeStates,
+    goals,
     fileHistorySnapshots,
     attributionSnapshots,
     contentReplacements,
@@ -3823,6 +3927,7 @@ async function loadSessionFile(sessionId: UUID): Promise<{
   tags: Map<UUID, string>
   agentSettings: Map<UUID, string>
   worktreeStates: Map<UUID, PersistedWorktreeSession | null>
+  goals: Map<UUID, GoalState>
   fileHistorySnapshots: Map<UUID, FileHistorySnapshotMessage>
   attributionSnapshots: Map<UUID, AttributionSnapshotMessage>
   contentReplacements: Map<UUID, ContentReplacementRecord[]>
@@ -3837,23 +3942,54 @@ async function loadSessionFile(sessionId: UUID): Promise<{
 }
 
 /**
- * Gets message UUIDs for a specific session without loading all sessions.
- * Memoized to avoid re-reading the same session file multiple times.
+ * Bounded cache for {@link getSessionMessages}. Bounded at
+ * {@link MAX_CACHED_SESSION_FILES} to prevent unbounded Map growth in
+ * long-running daemon / swarm sessions that spawn many agents — mirrors
+ * the existingSessionFiles pattern above. Entries are evicted in FIFO
+ * order via `Map` insertion order.
  */
-const getSessionMessages = memoize(
-  async (sessionId: UUID): Promise<Set<UUID>> => {
-    const { messages } = await loadSessionFile(sessionId)
-    return new Set(messages.keys())
-  },
-  (sessionId: UUID) => sessionId,
-)
+const sessionMessagesCache = new Map<UUID, Promise<Set<UUID>>>()
 
 /**
- * Clear the memoized session messages cache.
+ * Gets message UUIDs for a specific session without loading all sessions.
+ * Cached (bounded) to avoid re-reading the same session file multiple
+ * times. Concurrent calls for the same `sessionId` share one in-flight
+ * load promise.
+ *
+ * Exported so tests can verify cache eviction behavior directly; not
+ * intended as a public API — prefer {@link doesMessageExistInSession}.
+ */
+export async function getSessionMessages(sessionId: UUID): Promise<Set<UUID>> {
+  const existing = sessionMessagesCache.get(sessionId)
+  if (existing !== undefined) {
+    return existing
+  }
+  // Evict oldest entry when at capacity so the Map stays bounded.
+  if (sessionMessagesCache.size >= MAX_CACHED_SESSION_FILES) {
+    const oldestKey = sessionMessagesCache.keys().next().value
+    if (oldestKey !== undefined) {
+      sessionMessagesCache.delete(oldestKey)
+    }
+  }
+  const promise = (async () => {
+    const { messages } = await loadSessionFile(sessionId)
+    return new Set(messages.keys())
+  })()
+  sessionMessagesCache.set(sessionId, promise)
+  return promise
+}
+
+/** Underlying cache for direct manipulation (priming, clearing, tests). */
+export function getSessionMessagesCache(): Map<UUID, Promise<Set<UUID>>> {
+  return sessionMessagesCache
+}
+
+/**
+ * Clear the cached session messages.
  * Call after compaction when old message UUIDs are no longer valid.
  */
 export function clearSessionMessagesCache(): void {
-  getSessionMessages.cache.clear?.()
+  sessionMessagesCache.clear()
 }
 
 /**
@@ -3881,6 +4017,7 @@ export async function getLastSessionLog(
     fileHistorySnapshots,
     attributionSnapshots,
     contentReplacements,
+    goals,
     contextCollapseCommits,
     contextCollapseSnapshot,
   } = await loadSessionFile(sessionId)
@@ -3890,11 +4027,9 @@ export async function getLastSessionLog(
   // Guard: only prime if cache is empty. Mid-session callers (e.g. IssueFeedback)
   // may call getLastSessionLog on the current session — overwriting a live cache
   // with a stale disk snapshot would lose unflushed UUIDs and break dedup.
-  if (!getSessionMessages.cache.has(sessionId)) {
-    getSessionMessages.cache.set(
-      sessionId,
-      Promise.resolve(new Set(messages.keys())),
-    )
+  const messagesCache = getSessionMessagesCache()
+  if (!messagesCache.has(sessionId)) {
+    messagesCache.set(sessionId, Promise.resolve(new Set(messages.keys())))
   }
 
   // Find the most recent non-sidechain message
@@ -3922,6 +4057,7 @@ export async function getLastSessionLog(
       contentReplacements.get(sessionId) ?? [],
     ),
     worktreeSession: worktreeStates.get(sessionId),
+    goal: goals.get(sessionId),
     contextCollapseCommits: contextCollapseCommits.filter(
       e => e.sessionId === sessionId,
     ),
@@ -4357,7 +4493,7 @@ export function isLoggableMessage(m: Message): boolean {
   // user-configured hook output that is useful for session context on resume.
   if (m.type === 'attachment' && getUserType() !== 'ant') {
     if (
-      m.attachment.type === 'hook_additional_context' &&
+      m.attachment!.type === 'hook_additional_context' &&
       isEnvTruthy(process.env.CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT)
     ) {
       return true
@@ -4370,8 +4506,12 @@ export function isLoggableMessage(m: Message): boolean {
 function collectReplIds(messages: readonly Message[]): Set<string> {
   const ids = new Set<string>()
   for (const m of messages) {
-    if (m.type === 'assistant' && Array.isArray(m.message.content)) {
-      for (const b of m.message.content) {
+    if (m.type === 'assistant' && Array.isArray(m.message!.content)) {
+      for (const b of m.message!.content as Array<{
+        type: string
+        name: string
+        id: string
+      }>) {
         if (b.type === 'tool_use' && b.name === REPL_TOOL_NAME) {
           ids.add(b.id)
         }
@@ -4488,9 +4628,9 @@ export async function findUnresolvedToolUse(
     // Find the tool use but make sure there's not also a result
     for (const message of messages.values()) {
       if (message.type === 'assistant') {
-        const content = message.message.content
+        const content = message.message!.content
         if (Array.isArray(content)) {
-          for (const block of content) {
+          for (const block of content as Array<{ type: string; id: string }>) {
             if (block.type === 'tool_use' && block.id === toolUseId) {
               toolUseMessage = message
               break
@@ -4498,9 +4638,12 @@ export async function findUnresolvedToolUse(
           }
         }
       } else if (message.type === 'user') {
-        const content = message.message.content
+        const content = message.message!.content
         if (Array.isArray(content)) {
-          for (const block of content) {
+          for (const block of content as Array<{
+            type: string
+            tool_use_id: string
+          }>) {
             if (
               block.type === 'tool_result' &&
               block.tool_use_id === toolUseId
@@ -4513,7 +4656,7 @@ export async function findUnresolvedToolUse(
       }
     }
 
-    return toolUseMessage
+    return toolUseMessage as AssistantMessage | null
   } catch {
     return null
   }
@@ -4900,9 +5043,7 @@ function extractFirstPromptFromChunk(chunk: string): string {
         }
         return result
       }
-    } catch {
-      continue
-    }
+    } catch {}
   }
   // Session started with a slash command but had no subsequent real message —
   // use the clean command name so the session still appears in the resume picker

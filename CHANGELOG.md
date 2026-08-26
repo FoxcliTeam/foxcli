@@ -1,8 +1,14 @@
 # Changelog
 
+## 0.1.44
+
+- Added /goal command and function
+- Fixed bash mode output display problem
+- Fixed openaiConvertMessages image block convert problem
+
 ## 0.1.43
 
-- Fix free model max_tokens problem
+- Fixed free model max_tokens problem
 
 ## 0.1.42
 

@@ -121,6 +121,12 @@ const buddy = feature('BUDDY')
       require('./commands/buddy/index.js') as typeof import('./commands/buddy/index.js')
     ).default
   : null
+const goalCmd = feature('GOAL')
+  ? (
+      require('./commands/goal/index.js') as typeof import('./commands/goal/index.js')
+    ).default
+  : null
+
 /* eslint-enable @typescript-eslint/no-require-imports */
 import thinkback from './commands/thinkback/index.js'
 import thinkbackPlay from './commands/thinkback-play/index.js'
@@ -322,6 +328,7 @@ const COMMANDS = memoize((): Command[] => [
   ...(webCmd ? [webCmd] : []),
   ...(forkCmd ? [forkCmd] : []),
   ...(buddy ? [buddy] : []),
+  ...(goalCmd ? [goalCmd] : []),
   ...(proactive ? [proactive] : []),
   ...(briefCommand ? [briefCommand] : []),
   ...(assistantCommand ? [assistantCommand] : []),

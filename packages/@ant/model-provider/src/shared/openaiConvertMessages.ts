@@ -79,16 +79,22 @@ function convertInternalUserMessage(
       content,
     } satisfies ChatCompletionUserMessageParam)
   } else if (Array.isArray(content)) {
-    const textParts: string[] = []
+    type ContentPart =
+      | { type: 'text'; text: string }
+      | { type: 'image_url'; image_url: { url: string } }
+    // 按原始顺序收集内容块，保留图文混排次序
+    const parts: ContentPart[] = []
     const toolResults: BetaToolResultBlockParam[] = []
-    const imageParts: Array<{ type: 'image_url'; image_url: { url: string } }> =
-      []
+    const toolResultImages: Array<{
+      type: 'image_url'
+      image_url: { url: string }
+    }> = []
 
     for (const block of content) {
       if (typeof block === 'string') {
-        textParts.push(block)
+        parts.push({ type: 'text', text: block })
       } else if (block.type === 'text') {
-        textParts.push(block.text)
+        parts.push({ type: 'text', text: block.text })
       } else if (block.type === 'tool_result') {
         toolResults.push(block as BetaToolResultBlockParam)
       } else if (block.type === 'image') {
@@ -96,7 +102,7 @@ function convertInternalUserMessage(
           block as unknown as Record<string, unknown>,
         )
         if (imagePart) {
-          imageParts.push(imagePart)
+          parts.push(imagePart)
         }
       }
     }
@@ -106,58 +112,85 @@ function convertInternalUserMessage(
     // message with tool_calls. If we emit a user message first, the API will
     // reject the request with "insufficient tool messages following tool_calls".
     for (const tr of toolResults) {
-      result.push(convertToolResult(tr))
+      const { toolMessage, images } = convertToolResult(tr)
+      result.push(toolMessage)
+      // tool 消息不允许携带 image_url（OpenAI 规范），图片改挂到紧随其后的 user 消息；
+      // tool_result 在原始消息中先于其余块出现，插到最前以保持图文对应关系
+      toolResultImages.push(...images)
     }
 
-    // 如果有图片，构建多模态 content 数组
-    if (imageParts.length > 0) {
-      const multiContent: Array<
-        | { type: 'text'; text: string }
-        | { type: 'image_url'; image_url: { url: string } }
-      > = []
-      if (textParts.length > 0) {
-        multiContent.push({ type: 'text', text: textParts.join('\n') })
-      }
-      multiContent.push(...imageParts)
+    const hasImage =
+      toolResultImages.length > 0 || parts.some(p => p.type === 'image_url')
+
+    if (hasImage) {
+      // 多模态消息：保持原始顺序输出（空文本块部分网关会拒绝，过滤掉）
+      const multiContent = [...toolResultImages, ...parts].filter(
+        p => p.type !== 'text' || p.text,
+      )
       result.push({
         role: 'user',
         content: multiContent,
       } satisfies ChatCompletionUserMessageParam)
-    } else if (textParts.length > 0) {
-      result.push({
-        role: 'user',
-        content: textParts.join('\n'),
-      } satisfies ChatCompletionUserMessageParam)
+    } else {
+      const text = parts
+        .map(p => (p.type === 'text' ? p.text : ''))
+        .filter(Boolean)
+        .join('\n')
+      if (text) {
+        result.push({
+          role: 'user',
+          content: text,
+        } satisfies ChatCompletionUserMessageParam)
+      }
     }
   }
 
   return result
 }
 
+/**
+ * 将 tool_result 转为 OpenAI tool 消息，并提取其中的 image 块。
+ * （OpenAI 规范不允许 tool 消息携带 image_url，图片由调用方挂到后续 user 消息上）
+ */
 function convertToolResult(
   block: BetaToolResultBlockParam,
-): ChatCompletionToolMessageParam {
+): {
+  toolMessage: ChatCompletionToolMessageParam
+  images: Array<{ type: 'image_url'; image_url: { url: string } }>
+} {
   let content: string
+  const images: Array<{ type: 'image_url'; image_url: { url: string } }> = []
   if (typeof block.content === 'string') {
     content = block.content
   } else if (Array.isArray(block.content)) {
-    content = block.content
-      .map(c => {
-        if (typeof c === 'string') return c
-        if ('text' in c) return c.text
-        return ''
-      })
-      .filter(Boolean)
-      .join('\n')
+    const textParts: string[] = []
+    for (const c of block.content) {
+      if (typeof c === 'string') {
+        textParts.push(c)
+      } else if ('text' in c) {
+        textParts.push(c.text)
+      } else if ((c as { type?: string }).type === 'image') {
+        const imagePart = convertImageBlockToOpenAI(
+          c as unknown as Record<string, unknown>,
+        )
+        if (imagePart) {
+          images.push(imagePart)
+        }
+      }
+    }
+    content = textParts.filter(Boolean).join('\n')
   } else {
     content = ''
   }
 
   return {
-    role: 'tool',
-    tool_call_id: block.tool_use_id,
-    content,
-  } satisfies ChatCompletionToolMessageParam
+    toolMessage: {
+      role: 'tool',
+      tool_call_id: block.tool_use_id,
+      content,
+    },
+    images,
+  }
 }
 
 function convertInternalAssistantMessage(
@@ -246,11 +279,14 @@ function convertImageBlockToOpenAI(
   if (!source) return null
 
   if (source.type === 'base64' && typeof source.data === 'string') {
+    // 去除 base64 中的空白字符（换行/空格），空数据会产生非法 data URL，直接丢弃
+    const data = source.data.replace(/\s+/g, '')
+    if (!data) return null
     const mediaType = (source.media_type as string) || 'image/png'
     return {
       type: 'image_url',
       image_url: {
-        url: `data:${mediaType};base64,${source.data}`,
+        url: `data:${mediaType};base64,${data}`,
       },
     }
   }
