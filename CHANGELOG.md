@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.45
+
+- Added GLM 5.3 flash model
+
 ## 0.1.44
 
 - Added /goal command and function

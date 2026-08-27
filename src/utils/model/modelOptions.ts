@@ -5,6 +5,7 @@ import {
   MINIMAX_M3_CONFIG,
   CLAUDE_OPUS_CONFIG,
   GLM_5_2_CONFIG,
+  GLM_5_3_FLASH_CONFIG,
   GPT_5_4_CONFIG,
   GPT_5_6_CONFIG,
   MOONSHOT_KIMI_K2_7_CONFIG,
@@ -89,6 +90,15 @@ function getGlm52Option(): ModelOption {
   }
 }
 
+function getGlm53FlashOption(): ModelOption {
+  return {
+    value: GLM_5_3_FLASH_CONFIG,
+    label: 'GLM 5.3 flash',
+    description: 'GLM 5.3 flash · Z.ai turbo model',
+    descriptionForModel: 'GLM 5.3 flash - Z.ai turbo model',
+  }
+}
+
 function getGpt54Option(): ModelOption {
   return {
     value: GPT_5_4_CONFIG,
@@ -140,6 +150,7 @@ function getModelOptionsBase(): ModelOption[] {
     getDeepSeekOption(),
     getDeepSeekThinkOption(),
     getGlm52Option(),
+    getGlm53FlashOption(),
     getClaudeOpusOption(),
     getMoonshotK27Option(),
     getGpt56Option(),

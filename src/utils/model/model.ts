@@ -11,6 +11,7 @@ import {
   MINIMAX_M3_CONFIG,
   CLAUDE_OPUS_CONFIG,
   GLM_5_2_CONFIG,
+  GLM_5_3_FLASH_CONFIG,
   GPT_5_4_CONFIG,
   GPT_5_6_CONFIG,
   MOONSHOT_KIMI_K2_7_CONFIG,
@@ -145,8 +146,11 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
   if (name.includes('minimax')) {
     return 'minimax-m3'
   }
-  if (name.includes('glm')) {
+  if (name.includes('glm-5.2')) {
     return 'glm-5.2'
+  }
+  if (name.includes('glm-5.3-flash')) {
+    return 'glm-5.3-flash'
   }
   if (name.includes('ring-2.6-1t')) {
     return 'ring-2.6-1t'
@@ -211,6 +215,9 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
   if (model === 'glm-5.2') {
     return 'GLM 5.2'
   }
+  if (model === 'glm-5.3-flash') {
+    return 'GLM 5.3 flash'
+  }
   if (model === 'gpt-5.4') {
     return 'GPT 5.4'
   }
@@ -274,6 +281,9 @@ export function parseUserSpecifiedModel(
   }
   if (modelInputTrimmed === 'glm-5.2') {
     return GLM_5_2_CONFIG
+  }
+  if (modelInputTrimmed === 'glm-5.3-flash') {
+    return GLM_5_3_FLASH_CONFIG
   }
   if (modelInputTrimmed === 'gpt-5.4') {
     return GPT_5_4_CONFIG

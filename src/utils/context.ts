@@ -207,6 +207,9 @@ export function getModelMaxOutputTokens(model: string): {
   } else if (model === "mimo-v2.5" || model === "mimo-v2.5-pro") {
     defaultTokens = 128_000
     upperLimit = 131000
+  } else if (model === "glm-5.2" || model === "glm-5.3-flash") {
+    defaultTokens = 128_000
+    upperLimit = 131072
   } else if (model === "langrouter/auto") {
     defaultTokens = 4_096
     upperLimit = 8_192
