@@ -32,15 +32,19 @@ export function modelSupportsEffort(model: string): boolean {
   if (supported3P !== undefined) {
     return supported3P
   }
-  // Supported by a subset of Claude 4 models
+  // Supported by a subset of Claude 4 models and OpenAI-protocol models whose
+  // upstream provider exposes a reasoning/effort parameter.
   if (
     m.includes('opus-4-8') ||
     m.includes('opus-4-6') ||
     m.includes('sonnet-4-6') ||
     m.includes('deepseek-v4-flash') ||
-    m.includes('deepseek-v4-pro') || 
+    m.includes('deepseek-v4-pro') ||
     m.includes('glm-5.2') ||
-    m.includes('glm-5.3-flash')
+    m.includes('glm-5.3-flash') ||
+    m.includes('gpt-5.4') ||
+    m.includes('gpt-5.6-sol') ||
+    m.includes('ring-2.6-1t')
   ) {
     return true
   }
@@ -74,6 +78,10 @@ export function modelSupportsMaxEffort(model: string): boolean {
   if (model.toLowerCase().includes('glm-5.2') || model.toLowerCase().includes('glm-5.3-flash')) {
     return true
   }
+  // GPT-5.6 Sol supports max reasoning effort.
+  if (model.toLowerCase().includes('gpt-5.6-sol')) {
+    return true
+  }
   if (
     model.toLowerCase().includes('opus-4-8') ||
     model.toLowerCase().includes('opus-4-6')
@@ -94,6 +102,17 @@ export function modelSupportsXhighEffort(model: string): boolean {
     return supported3P
   }
   if (model.toLowerCase().includes('opus-4-8')) {
+    return true
+  }
+  // GLM-5.2, GPT-5.4, GPT-5.6 Sol, and Ring-2.6-1T support xhigh effort.
+  const lower = model.toLowerCase()
+  if (
+    lower.includes('glm-5.2') ||
+    lower.includes('glm-5.3-flash') ||
+    lower.includes('gpt-5.4') ||
+    lower.includes('gpt-5.6-sol') ||
+    lower.includes('ring-2.6-1t')
+  ) {
     return true
   }
   if (process.env.USER_TYPE === 'ant' && resolveAntModel(model)) {
@@ -277,9 +296,9 @@ export function getEffortLevelDescription(level: EffortLevel): string {
     case 'high':
       return 'Comprehensive implementation with extensive testing and documentation'
     case 'xhigh':
-      return 'Extended reasoning beyond high, short of max (Opus 4.8 only)'
+      return 'Extended reasoning beyond high, short of max (Opus 4.8, GLM 5.2, GPT-5.4/5.6, Ring-2.6-1T)'
     case 'max':
-      return 'Maximum capability with deepest reasoning (Opus 4.6~4.8, GLM 5.2/5.3 flash, DeepSeek V4 flash/pro)'
+      return 'Maximum capability with deepest reasoning (Opus 4.6~4.8, GLM 5.2/5.3 flash, DeepSeek V4 flash/pro, GPT-5.6 Sol)'
   }
 }
 

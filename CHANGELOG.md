@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.46
+
+- Fixed User-Agent for openai reqeusts
+- Fixed reasoning_effort for openai reqeusts
+
 ## 0.1.45
 
 - Added GLM 5.3 flash model

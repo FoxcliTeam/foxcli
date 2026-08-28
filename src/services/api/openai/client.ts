@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { getUserAgent } from 'src/utils/http.js'
 import { getCustomModelConfig, isCustomModel, getCustomModelId } from 'src/utils/model/model.js'
 import { getInitialSettings } from 'src/utils/settings/settings.js'
 import type { ModelProviders } from 'src/utils/settings/types.js'
@@ -118,7 +119,10 @@ export function getOpenAIClient(options?: {
     dangerouslyAllowBrowser: true,
     ...(process.env.OPENAI_ORG_ID && { organization: process.env.OPENAI_ORG_ID }),
     ...(process.env.OPENAI_PROJECT_ID && { project: process.env.OPENAI_PROJECT_ID }),
-    ...(customConfig?.customHeaders && { defaultHeaders: customConfig.customHeaders }),
+    defaultHeaders: {
+      'User-Agent': getUserAgent(),
+      ...(customConfig?.customHeaders ?? {}),
+    },
     fetchOptions: getProxyFetchOptions({ forAnthropicAPI: false }),
     ...(options?.fetchOverride && { fetch: options.fetchOverride }),
   })

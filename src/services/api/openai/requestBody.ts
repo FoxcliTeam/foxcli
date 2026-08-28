@@ -6,6 +6,7 @@
 import type { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/completions/completions.mjs'
 import { getCustomModelConfig, getCustomModelId, isCustomModel } from '../../../utils/model/model.js'
 import { isEnvTruthy, isEnvDefinedFalsy } from '../../../utils/envUtils.js'
+import { convertEffortValueToLevel, type EffortValue } from '../../../utils/effort.js'
 
 /**
  * Detect whether DeepSeek-style thinking mode should be enabled.
@@ -72,12 +73,14 @@ export function buildOpenAIRequestBody(params: {
   enableThinking: boolean
   maxTokens: number
   temperatureOverride?: number
+  effortValue?: EffortValue
 }): ChatCompletionCreateParamsStreaming & {
   thinking?: { type: string }
   enable_thinking?: boolean
   chat_template_kwargs?: { thinking: boolean }
+  reasoning_effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 } {
-  const { model, originalModel, messages, tools, toolChoice, enableThinking, maxTokens, temperatureOverride } = params
+  const { model, originalModel, messages, tools, toolChoice, enableThinking, maxTokens, temperatureOverride, effortValue } = params
 
   const modelForConfig = originalModel ?? model
   const customConfig = isCustomModel(modelForConfig) ? getCustomModelConfig(modelForConfig) : undefined
@@ -87,6 +90,12 @@ export function buildOpenAIRequestBody(params: {
   const topP = samplingParams?.top_p
   const presencePenalty = samplingParams?.presence_penalty
   const frequencyPenalty = samplingParams?.frequency_penalty
+
+  // Map langcli effort levels to the OpenAI-compatible reasoning_effort parameter.
+  // Numeric effort values are ant-only; coerce them to a string level first.
+  const reasoningEffort = effortValue !== undefined
+    ? convertEffortValueToLevel(effortValue)
+    : undefined
 
   // Defensive: strip custom: prefix if present (resolveOpenAIModel should have
   // already done this, but the compiled build sometimes fails to do so)
@@ -126,6 +135,7 @@ export function buildOpenAIRequestBody(params: {
     ...(topP !== undefined && { top_p: topP }),
     ...(presencePenalty !== undefined && { presence_penalty: presencePenalty }),
     ...(frequencyPenalty !== undefined && { frequency_penalty: frequencyPenalty }),
+    ...(reasoningEffort !== undefined && { reasoning_effort: reasoningEffort }),
     ...(customConfig?.generationConfig?.extra_body && customConfig.generationConfig.extra_body),
   }
 }

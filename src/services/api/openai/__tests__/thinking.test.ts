@@ -224,3 +224,36 @@ describe('buildOpenAIRequestBody — thinking params', () => {
     expect(body.tool_choice).toBeUndefined()
   })
 })
+
+describe('buildOpenAIRequestBody — reasoning_effort from effortValue', () => {
+  const baseParams = {
+    model: 'deepseek-v4-flash',
+    messages: [{ role: 'user', content: 'hello' }],
+    tools: [] as any[],
+    toolChoice: undefined as any,
+    enableThinking: false,
+  } as any
+
+  test('maps string effort levels to reasoning_effort', () => {
+    for (const [effort, expected] of [
+      ['low', 'low'],
+      ['medium', 'medium'],
+      ['high', 'high'],
+      ['xhigh', 'xhigh'],
+      ['max', 'max'],
+    ] as const) {
+      const body = buildOpenAIRequestBody({ ...baseParams, effortValue: effort })
+      expect(body.reasoning_effort).toBe(expected)
+    }
+  })
+
+  test('omits reasoning_effort when effortValue is undefined', () => {
+    const body = buildOpenAIRequestBody(baseParams)
+    expect(body.reasoning_effort).toBeUndefined()
+  })
+
+  test('coerces ant-only numeric effort to a level string', () => {
+    const body = buildOpenAIRequestBody({ ...baseParams, effortValue: 90 })
+    expect(body.reasoning_effort).toBe('high')
+  })
+})
