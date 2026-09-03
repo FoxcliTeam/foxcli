@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.48
+
+- Added session id to requests from openai client
+
 ## 0.1.47
 
 - Added Claude opus 5 model

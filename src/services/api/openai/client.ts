@@ -6,6 +6,24 @@ import type { ModelProviders } from 'src/utils/settings/types.js'
 import { getProxyFetchOptions } from 'src/utils/proxy.js'
 import { isEnvTruthy } from 'src/utils/envUtils.js'
 import { isBuiltInOpenAIModel } from 'src/utils/model/configs.js'
+import { getSessionId } from '../../../bootstrap/state.js'
+
+/**
+ * langrouter models that require an `x-opencode-session` header carrying the
+ * current langcli session id so the upstream provider can correlate requests.
+ * Values are the langrouter provider `modelName`s (lowercased for matching).
+ */
+const OPENCODE_SESSION_MODELS = new Set([
+  'langrouter/auto',
+  'kimi-k2.7-code',
+  'glm-5.2',
+  'glm-5.3-flash',
+  'minimax-m3',
+  'kimi-k2.5',
+  'mimo-v2.5-pro',
+  'mimo-v2.5',
+  'kimi-k2.6',
+])
 
 /**
  * Environment variables:
@@ -111,6 +129,17 @@ export function getOpenAIClient(options?: {
   const apiKey = resolveOpenAIApiKey(options?.model)
   const baseURL = resolveOpenAIBaseURL(options?.model)
 
+  // For langrouter special models, carry the langcli session id so the upstream
+  // provider can correlate the request. Match case-insensitively and strip the
+  // `custom:` prefix so both built-in (minimax-m3) and custom model ids match.
+  const opencodeSessionHeader: Record<string, string> = {}
+  const normalizedModel = (options?.model ?? '')
+    .replace(/^custom:/, '')
+    .toLowerCase()
+  if (OPENCODE_SESSION_MODELS.has(normalizedModel)) {
+    opencodeSessionHeader['x-opencode-session'] = getSessionId()
+  }
+
   const client = new OpenAI({
     apiKey,
     ...(baseURL && { baseURL }),
@@ -122,6 +151,7 @@ export function getOpenAIClient(options?: {
     defaultHeaders: {
       'User-Agent': getUserAgent(),
       ...(customConfig?.customHeaders ?? {}),
+      ...opencodeSessionHeader,
     },
     fetchOptions: getProxyFetchOptions({ forAnthropicAPI: false }),
     ...(options?.fetchOverride && { fetch: options.fetchOverride }),
