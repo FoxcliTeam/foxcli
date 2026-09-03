@@ -1,5 +1,12 @@
 import { describe, expect, test, beforeEach, afterEach, mock } from 'bun:test'
 
+// getUserAgent() reads the build-time MACRO global, which plain `bun test`
+// does not inject (only dev mode / build do). Stub it like
+// WebSearchTool/__tests__/bingAdapter.integration.ts does.
+if (!(globalThis as any).MACRO) {
+  ;(globalThis as any).MACRO = { VERSION: '0.0.0-test', BUILD_TIME: '0' } as any
+}
+
 // Defensive: agent.test.ts can corrupt Bun's src/* path alias at runtime.
 mock.module('src/utils/proxy.js', () => ({
   getProxyFetchOptions: () => ({} as any),

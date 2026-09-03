@@ -35,8 +35,8 @@ export function modelSupportsEffort(model: string): boolean {
   // Supported by a subset of Claude 4 models and OpenAI-protocol models whose
   // upstream provider exposes a reasoning/effort parameter.
   if (
-    m.includes('opus-4-8') ||
-    m.includes('opus-4-6') ||
+    m.includes('opus-5') ||
+    m.includes('opus-4') ||
     m.includes('sonnet-4-6') ||
     m.includes('deepseek-v4-flash') ||
     m.includes('deepseek-v4-pro') ||
@@ -83,8 +83,8 @@ export function modelSupportsMaxEffort(model: string): boolean {
     return true
   }
   if (
-    model.toLowerCase().includes('opus-4-8') ||
-    model.toLowerCase().includes('opus-4-6')
+    model.toLowerCase().includes('opus-5') || 
+    model.toLowerCase().includes('opus-4-')
   ) {
     return true
   }
@@ -101,7 +101,7 @@ export function modelSupportsXhighEffort(model: string): boolean {
   if (supported3P !== undefined) {
     return supported3P
   }
-  if (model.toLowerCase().includes('opus-4-8')) {
+  if (model.toLowerCase().includes('opus-5') || model.toLowerCase().includes('opus-4-8')) {
     return true
   }
   // GLM-5.2, GPT-5.4, GPT-5.6 Sol, and Ring-2.6-1T support xhigh effort.
@@ -296,9 +296,9 @@ export function getEffortLevelDescription(level: EffortLevel): string {
     case 'high':
       return 'Comprehensive implementation with extensive testing and documentation'
     case 'xhigh':
-      return 'Extended reasoning beyond high, short of max (Opus 4.8, GLM 5.2, GPT-5.4/5.6, Ring-2.6-1T)'
+      return 'Extended reasoning beyond high, short of max (Opus, GLM 5.2, GPT-5.4/5.6, Ring-2.6-1T)'
     case 'max':
-      return 'Maximum capability with deepest reasoning (Opus 4.6~4.8, GLM 5.2/5.3 flash, DeepSeek V4 flash/pro, GPT-5.6 Sol)'
+      return 'Maximum capability with deepest reasoning (Opus, GLM 5.2/5.3 flash, DeepSeek V4 flash/pro, GPT-5.6 Sol)'
   }
 }
 
@@ -375,8 +375,8 @@ export function getDefaultEffortForModel(
   // Default effort on Opus 4.6 to medium for Pro.
   // Max/Team also get medium when the tengu_grey_step2 config is enabled.
   if (
-    model.toLowerCase().includes('opus-4-8') ||
-    model.toLowerCase().includes('opus-4-6')
+    model.toLowerCase().includes('opus-5') ||
+    model.toLowerCase().includes('opus-4-')
   ) {
     if (isProSubscriber()) {
       return 'high'

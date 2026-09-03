@@ -106,7 +106,7 @@ export function modelSupportsISP(model: string): boolean {
     return !canonical.includes('claude-3-')
   }
   return (
-    canonical.includes('claude-opus-4') || canonical.includes('claude-sonnet-4')
+    canonical.includes('claude-opus-5') || canonical.includes('claude-opus-4') || canonical.includes('claude-sonnet-4')
   )
 }
 
@@ -114,6 +114,7 @@ function vertexModelSupportsWebSearch(model: string): boolean {
   const canonical = getCanonicalName(model)
   // Web search only supported on Claude 4.0+ models on Vertex
   return (
+    canonical.includes('claude-opus-5') ||
     canonical.includes('claude-opus-4') ||
     canonical.includes('claude-sonnet-4') ||
     canonical.includes('claude-haiku-4')
@@ -131,6 +132,7 @@ export function modelSupportsContextManagement(model: string): boolean {
     return !canonical.includes('claude-3-')
   }
   return (
+    canonical.includes('claude-opus-5') ||
     canonical.includes('claude-opus-4') ||
     canonical.includes('claude-sonnet-4') ||
     canonical.includes('claude-haiku-4')
@@ -152,6 +154,7 @@ export function modelSupportsStructuredOutputs(model: string): boolean {
     canonical.includes('claude-opus-4-5') ||
     canonical.includes('claude-opus-4-6') ||
     canonical.includes('claude-opus-4-8') ||
+    canonical.includes('claude-opus-5') ||
     canonical.includes('claude-haiku-4-5')
   )
 }

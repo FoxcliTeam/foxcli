@@ -8,7 +8,7 @@
 
 Langcli 是一款在终端中使用的交互式 AI 编程助手, 它是基于Claude code的最佳实践进行开发而成。它有这些特点：
 - Langcli 与 Claude Code 100% 兼容。因此，使用 Langcli 的方式与标准 Claude Code 完全相同，并且你现有项目中的 .claude或skills 目录也完全适用于 Langcli。
-- 更令人兴奋的是Langcli与[LangRouter](https://langrouter.ai/)已深度集成，这样，你可以在一个正在工作的session中根据需求随意使用、切换主流的LLM 模型(包括Claude OPUS 4.8, GLM 5.3 flash, GLM 5.2, GPT 5.6 sol, Deepseek v4 pro, Deepseek v4 flash, Kimi K2.7 code, Minimax M3, Mimo 2.5 pro等)，而不会中断你的上下文。
+- 更令人兴奋的是Langcli与[LangRouter](https://langrouter.ai/)已深度集成，这样，你可以在一个正在工作的session中根据需求随意使用、切换主流的LLM 模型(包括Claude OPUS 5, GLM 5.3 flash, GLM 5.2, GPT 5.6 sol, Deepseek v4 pro, Deepseek v4 flash, Kimi K2.7 code, Minimax M3, Mimo 2.5 pro等)，而不会中断你的上下文。
 
 <div align="center">
   <img title="Langcli" height=400 alt="Alt text" src="/docs/assets/screen.jpg">

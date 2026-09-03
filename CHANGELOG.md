@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.47
+
+- Added Claude opus 5 model
+
 ## 0.1.46
 
 - Fixed User-Agent for openai reqeusts

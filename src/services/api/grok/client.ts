@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { getUserAgent } from 'src/utils/http.js'
 import { getProxyFetchOptions } from 'src/utils/proxy.js'
 
 /**
@@ -28,6 +29,9 @@ export function getGrokClient(options?: {
     maxRetries: options?.maxRetries ?? 0,
     timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
     dangerouslyAllowBrowser: true,
+    defaultHeaders: {
+      'User-Agent': getUserAgent(),
+    },
     fetchOptions: getProxyFetchOptions({ forAnthropicAPI: false }),
     ...(options?.fetchOverride && { fetch: options.fetchOverride }),
   })

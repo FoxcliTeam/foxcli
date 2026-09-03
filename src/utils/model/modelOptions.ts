@@ -4,6 +4,7 @@ import {
   DEEPSEEK_V4_PRO_CONFIG,
   MINIMAX_M3_CONFIG,
   CLAUDE_OPUS_CONFIG,
+  CLAUDE_OPUS_4_CONFIG,
   GLM_5_2_CONFIG,
   GLM_5_3_FLASH_CONFIG,
   GPT_5_4_CONFIG,
@@ -75,9 +76,18 @@ function getMiniMaxOption(): ModelOption {
 function getClaudeOpusOption(): ModelOption {
   return {
     value: CLAUDE_OPUS_CONFIG,
+    label: 'Claude Opus 5',
+    description: 'Claude Opus 5 · Anthropic flagship model',
+    descriptionForModel: 'Claude Opus 5 - Anthropic flagship model',
+  }
+}
+
+function getClaudeOpus4Option(): ModelOption {
+  return {
+    value: CLAUDE_OPUS_4_CONFIG,
     label: 'Claude Opus 4.8',
-    description: 'Claude Opus 4.8 · Anthropic flagship model',
-    descriptionForModel: 'Claude Opus 4.8 - Anthropic flagship model',
+    description: 'Claude Opus 4.8 · Anthropic model',
+    descriptionForModel: 'Claude Opus 4.8 - Anthropic model',
   }
 }
 
@@ -152,13 +162,13 @@ function getModelOptionsBase(): ModelOption[] {
     getGlm52Option(),
     getGlm53FlashOption(),
     getClaudeOpusOption(),
+    getClaudeOpus4Option(),
     getMoonshotK27Option(),
     getGpt56Option(),
     getGpt54Option(),
     getMiniMaxOption(),
     getMimo25ProOption(),
     getMimo25Option(),
-    getRing261TOption(),
   ]
 }
 

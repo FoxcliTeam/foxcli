@@ -10,6 +10,7 @@ import {
   MOONSHOT_KIMI_K2_5_CONFIG,
   MINIMAX_M3_CONFIG,
   CLAUDE_OPUS_CONFIG,
+  CLAUDE_OPUS_4_CONFIG,
   GLM_5_2_CONFIG,
   GLM_5_3_FLASH_CONFIG,
   GPT_5_4_CONFIG,
@@ -209,6 +210,9 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
   if (model === 'minimax-m3') {
     return 'MiniMax M3'
   }
+  if (model === 'claude-opus-5') {
+    return 'Claude Opus 5'
+  }
   if (model === 'claude-opus-4-8') {
     return 'Claude Opus 4.8'
   }
@@ -276,8 +280,11 @@ export function parseUserSpecifiedModel(
   if (modelInputTrimmed === 'minimax-m3') {
     return MINIMAX_M3_CONFIG
   }
-  if (modelInputTrimmed === 'claude-opus-4-8') {
+  if (modelInputTrimmed === 'claude-opus-5') {
     return CLAUDE_OPUS_CONFIG
+  }
+  if (modelInputTrimmed === 'claude-opus-4-8') {
+    return CLAUDE_OPUS_4_CONFIG
   }
   if (modelInputTrimmed === 'glm-5.2') {
     return GLM_5_2_CONFIG
