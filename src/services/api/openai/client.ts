@@ -132,11 +132,13 @@ export function getOpenAIClient(options?: {
   // For langrouter special models, carry the langcli session id so the upstream
   // provider can correlate the request. Match case-insensitively and strip the
   // `custom:` prefix so both built-in (minimax-m3) and custom model ids match.
+  // Custom models (with the `custom:` prefix) always carry the session header.
   const opencodeSessionHeader: Record<string, string> = {}
+  const isCustomModelRequest = (options?.model ?? '').startsWith('custom:')
   const normalizedModel = (options?.model ?? '')
     .replace(/^custom:/, '')
     .toLowerCase()
-  if (OPENCODE_SESSION_MODELS.has(normalizedModel)) {
+  if (isCustomModelRequest || OPENCODE_SESSION_MODELS.has(normalizedModel)) {
     opencodeSessionHeader['x-opencode-session'] = getSessionId()
   }
 

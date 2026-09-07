@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.49
+
+- Added session id to requests of custom models
+
 ## 0.1.48
 
 - Added session id to requests from openai client
